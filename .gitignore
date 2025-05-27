@@ -1,22 +1,24 @@
 # Python
-*.py[cod]
 __pycache__/
+*.py[cod]
+*$py.class
 *.so
-*.egg
-*.egg-info/
-dist/
+.Python
 build/
-eggs/
-parts/
-bin/
-var/
-sdist/
 develop-eggs/
-.installed.cfg
+dist/
+downloads/
+eggs/
+.eggs/
 lib/
 lib64/
-venv/
-.env
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Django
 *.log
@@ -26,14 +28,16 @@ db.sqlite3
 media/
 static/
 
-# VS Code
-.vscode/
+# Virtual Environment
+venv/
+ENV/
 
-# PyCharm
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
 
-# macOS
+# OS
 .DS_Store
-
-# Windows
 Thumbs.db 

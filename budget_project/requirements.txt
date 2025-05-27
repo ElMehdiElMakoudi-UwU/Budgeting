@@ -4,4 +4,8 @@ pytesseract==0.3.10
 qrcode==7.4.2
 firebase-admin==6.2.0
 SpeechRecognition==3.10.0
-pydub==0.25.1 
+pydub==0.25.1
+gunicorn==21.2.0
+django-widget-tweaks==1.5.0
+django-crispy-forms==2.1
+crispy-bootstrap5==2023.10 
