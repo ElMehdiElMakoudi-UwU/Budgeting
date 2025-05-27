@@ -1,4 +1,5 @@
 {% extends 'core/base.html' %}
+{% load currency_format %}
 
 {% block title %}Transactions - Budget App{% endblock %}
 
@@ -49,7 +50,7 @@
                     <tr class="{% if transaction.type == 'income' %}table-success{% else %}table-danger{% endif %}">
                         <td>{{ transaction.date }}</td>
                         <td>{{ transaction.category.name }}</td>
-                        <td>${{ transaction.amount|floatformat:2 }}</td>
+                        <td>{{ transaction.amount|currency }}</td>
                         <td>{{ transaction.note|truncatechars:30 }}</td>
                         <td>
                             <a href="{% url 'transaction-update' transaction.pk %}" class="btn btn-sm btn-info">

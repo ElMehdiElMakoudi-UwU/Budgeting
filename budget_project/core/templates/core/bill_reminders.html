@@ -1,0 +1,105 @@
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block title %}Bill Reminders{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Bill Reminders</h1>
+        <a href="{% url 'add_bill_reminder' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> Add Bill
+        </a>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Pending Bills</h5>
+                    <h2 class="card-text text-primary">{{ pending_bills }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Overdue Bills</h5>
+                    <h2 class="card-text text-danger">{{ overdue_bills }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if bills %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Amount</th>
+                        <th>Due Date</th>
+                        <th>Category</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bill in bills %}
+                        <tr class="{% if bill.status == 'overdue' %}table-danger{% elif bill.status == 'paid' %}table-success{% endif %}">
+                            <td>
+                                {{ bill.title }}
+                                {% if bill.recurring %}
+                                    <span class="badge bg-info">Recurring</span>
+                                {% endif %}
+                            </td>
+                            <td>${{ bill.amount }}</td>
+                            <td>{{ bill.due_date }}</td>
+                            <td>{{ bill.category.name }}</td>
+                            <td>
+                                <span class="badge {% if bill.status == 'paid' %}bg-success{% elif bill.status == 'overdue' %}bg-danger{% else %}bg-warning{% endif %}">
+                                    {{ bill.status|title }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    {% if bill.status == 'pending' or bill.status == 'overdue' %}
+                                        <form method="post" action="{% url 'mark_bill_paid' bill.pk %}" class="d-inline">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-success btn-sm" title="Mark as Paid">
+                                                <i class="fas fa-check"></i>
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                    <a href="{% url 'edit_bill_reminder' bill.pk %}" class="btn btn-primary btn-sm" title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'delete_bill_reminder' bill.pk %}" class="btn btn-danger btn-sm" title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            No bill reminders found. Click the "Add Bill" button to create one!
+        </div>
+    {% endif %}
+</div>
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Enable tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
+    });
+</script>
+{% endblock %}
+{% endblock %} 

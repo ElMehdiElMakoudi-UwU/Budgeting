@@ -6,9 +6,27 @@ from django.urls import reverse_lazy
 from django.db.models import Sum
 from django.utils import timezone
 from datetime import datetime
-from .models import Category, Transaction, Budget, RecurringTransaction
+from .models import Category, Transaction, Budget, RecurringTransaction, SavingsGoal, BillReminder
 from django.contrib import messages
-from .forms import CategoryForm, TransactionForm, BudgetForm, RecurringTransactionForm
+from .forms import CategoryForm, TransactionForm, BudgetForm, RecurringTransactionForm, SavingsGoalForm, BillReminderForm
+from decimal import Decimal
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from .serializers import (
+    ReceiptSerializer, QRPaymentSerializer, MobileNotificationSerializer,
+    VoiceTransactionSerializer, DeviceTokenSerializer
+)
+import pytesseract
+from PIL import Image
+import qrcode
+import speech_recognition as sr
+from pydub import AudioSegment
+import io
+import json
+import firebase_admin
+from firebase_admin import credentials, messaging
 
 @login_required
 def dashboard(request):
@@ -272,3 +290,306 @@ def toggle_recurring_transaction(request, pk):
     status = 'activated' if recurring_transaction.is_active else 'deactivated'
     messages.success(request, f'Recurring transaction {status} successfully.')
     return redirect('recurring-transaction-list')
+
+class SavingsGoalListView(LoginRequiredMixin, ListView):
+    model = SavingsGoal
+    template_name = 'core/savings_goal_list.html'
+    context_object_name = 'savings_goals'
+
+    def get_queryset(self):
+        return SavingsGoal.objects.filter(user=self.request.user)
+
+class SavingsGoalCreateView(LoginRequiredMixin, CreateView):
+    model = SavingsGoal
+    form_class = SavingsGoalForm
+    template_name = 'core/savings_goal_form.html'
+    success_url = reverse_lazy('savings-goal-list')
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def form_valid(self, form):
+        form.instance.user = self.request.user
+        return super().form_valid(form)
+
+class SavingsGoalUpdateView(LoginRequiredMixin, UpdateView):
+    model = SavingsGoal
+    form_class = SavingsGoalForm
+    template_name = 'core/savings_goal_form.html'
+    success_url = reverse_lazy('savings-goal-list')
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['user'] = self.request.user
+        return kwargs
+
+    def get_queryset(self):
+        return SavingsGoal.objects.filter(user=self.request.user)
+
+class SavingsGoalDeleteView(LoginRequiredMixin, DeleteView):
+    model = SavingsGoal
+    template_name = 'core/savings_goal_confirm_delete.html'
+    success_url = reverse_lazy('savings-goal-list')
+
+    def get_queryset(self):
+        return SavingsGoal.objects.filter(user=self.request.user)
+
+@login_required
+def update_savings_goal_amount(request, pk):
+    goal = get_object_or_404(SavingsGoal, pk=pk, user=request.user)
+    if request.method == 'POST':
+        amount = request.POST.get('amount')
+        try:
+            amount = Decimal(amount)
+            goal.current_amount = amount
+            if amount >= goal.target_amount:
+                goal.status = 'completed'
+            elif goal.status == 'completed':
+                goal.status = 'in_progress'
+            goal.save()
+            messages.success(request, 'Savings goal amount updated successfully!')
+        except:
+            messages.error(request, 'Invalid amount provided.')
+    return redirect('savings-goal-list')
+
+@login_required
+def bill_reminders(request):
+    """View for listing and managing bill reminders."""
+    bills = BillReminder.objects.filter(user=request.user).order_by('due_date')
+    
+    # Update overdue status
+    for bill in bills:
+        if bill.is_overdue():
+            bill.status = 'overdue'
+            bill.save()
+
+    context = {
+        'bills': bills,
+        'pending_bills': bills.filter(status='pending').count(),
+        'overdue_bills': bills.filter(status='overdue').count(),
+    }
+    return render(request, 'core/bill_reminders.html', context)
+
+@login_required
+def add_bill_reminder(request):
+    """View for adding a new bill reminder."""
+    if request.method == 'POST':
+        form = BillReminderForm(request.POST, user=request.user)
+        if form.is_valid():
+            bill = form.save(commit=False)
+            bill.user = request.user
+            bill.save()
+            messages.success(request, 'Bill reminder added successfully!')
+            return redirect('bill_reminders')
+    else:
+        form = BillReminderForm(user=request.user)
+    
+    return render(request, 'core/bill_reminder_form.html', {'form': form, 'title': 'Add Bill Reminder'})
+
+@login_required
+def edit_bill_reminder(request, pk):
+    """View for editing an existing bill reminder."""
+    bill = get_object_or_404(BillReminder, pk=pk, user=request.user)
+    
+    if request.method == 'POST':
+        form = BillReminderForm(request.POST, instance=bill, user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Bill reminder updated successfully!')
+            return redirect('bill_reminders')
+    else:
+        form = BillReminderForm(instance=bill, user=request.user)
+    
+    return render(request, 'core/bill_reminder_form.html', {'form': form, 'title': 'Edit Bill Reminder'})
+
+@login_required
+def delete_bill_reminder(request, pk):
+    """View for deleting a bill reminder."""
+    bill = get_object_or_404(BillReminder, pk=pk, user=request.user)
+    
+    if request.method == 'POST':
+        bill.delete()
+        messages.success(request, 'Bill reminder deleted successfully!')
+        return redirect('bill_reminders')
+    
+    return render(request, 'core/confirm_delete.html', {'object': bill, 'object_type': 'bill reminder'})
+
+@login_required
+def mark_bill_as_paid(request, pk):
+    """View for marking a bill as paid."""
+    bill = get_object_or_404(BillReminder, pk=pk, user=request.user)
+    
+    if request.method == 'POST':
+        bill.mark_as_paid()
+        messages.success(request, f'Bill "{bill.title}" marked as paid!')
+        
+        # Handle recurring bills
+        if bill.recurring:
+            next_due_date = bill.get_next_due_date()
+            if next_due_date:
+                # Create next bill reminder
+                BillReminder.objects.create(
+                    user=request.user,
+                    title=bill.title,
+                    amount=bill.amount,
+                    due_date=next_due_date,
+                    category=bill.category,
+                    description=bill.description,
+                    reminder_days=bill.reminder_days,
+                    recurring=True,
+                    recurring_frequency=bill.recurring_frequency
+                )
+                messages.info(request, f'Next bill reminder created for {next_due_date}')
+    
+    return redirect('bill_reminders')
+
+class ReceiptViewSet(viewsets.ModelViewSet):
+    serializer_class = ReceiptSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Receipt.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        receipt = serializer.save(user=self.request.user)
+        # Process the receipt image with OCR
+        try:
+            image = Image.open(receipt.image)
+            ocr_text = pytesseract.image_to_string(image)
+            receipt.ocr_text = ocr_text
+            
+            # Extract information from OCR text
+            lines = ocr_text.split('\n')
+            for line in lines:
+                if '$' in line:
+                    # Try to extract amount
+                    amount = line.split('$')[1].strip().split()[0]
+                    try:
+                        receipt.total_amount = float(amount.replace(',', ''))
+                    except ValueError:
+                        pass
+                
+            receipt.processed = True
+            receipt.save()
+        except Exception as e:
+            receipt.ocr_text = f"Error processing receipt: {str(e)}"
+            receipt.save()
+
+class QRPaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = QRPaymentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return QRPayment.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        payment = serializer.save(user=self.request.user)
+        
+        # Generate QR code
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        data = {
+            'amount': str(payment.amount),
+            'description': payment.description,
+            'expires_at': payment.expires_at.isoformat(),
+            'id': payment.id
+        }
+        qr.add_data(json.dumps(data))
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        
+        # Save the QR code
+        from django.core.files.base import ContentFile
+        payment.qr_code.save(f'qr_payment_{payment.id}.png', ContentFile(buffer.getvalue()), save=True)
+
+class MobileNotificationViewSet(viewsets.ModelViewSet):
+    serializer_class = MobileNotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return MobileNotification.objects.filter(user=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def register_device(self, request):
+        serializer = DeviceTokenSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def send_push_notification(self, token, title, body):
+        try:
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title=title,
+                    body=body,
+                ),
+                token=token,
+            )
+            response = messaging.send(message)
+            return True
+        except Exception as e:
+            print(f"Error sending notification: {e}")
+            return False
+
+class VoiceTransactionViewSet(viewsets.ModelViewSet):
+    serializer_class = VoiceTransactionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return VoiceTransaction.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        voice_transaction = serializer.save(user=self.request.user)
+        
+        try:
+            # Convert audio file to wav format
+            audio = AudioSegment.from_file(voice_transaction.audio_file)
+            wav_file = io.BytesIO()
+            audio.export(wav_file, format="wav")
+            
+            # Perform speech recognition
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(wav_file) as source:
+                audio_data = recognizer.record(source)
+                text = recognizer.recognize_google(audio_data)
+                
+            voice_transaction.transcription = text
+            
+            # Try to parse transaction details from transcription
+            # Example: "Spent 50 dollars on groceries"
+            words = text.lower().split()
+            amount = None
+            category = None
+            
+            for i, word in enumerate(words):
+                if word.isdigit():
+                    amount = float(word)
+                    break
+                    
+            # Look for category keywords
+            categories = Category.objects.filter(user=self.request.user)
+            for category in categories:
+                if category.name.lower() in text.lower():
+                    category = category
+                    break
+            
+            if amount and category:
+                transaction = Transaction.objects.create(
+                    user=self.request.user,
+                    amount=amount,
+                    category=category,
+                    description=text
+                )
+                voice_transaction.transaction = transaction
+                
+            voice_transaction.processed = True
+            voice_transaction.save()
+            
+        except Exception as e:
+            voice_transaction.transcription = f"Error processing voice: {str(e)}"
+            voice_transaction.save()

@@ -1,5 +1,6 @@
 {% extends 'core/base.html' %}
 {% load budget_filters %}
+{% load currency_format %}
 
 {% block title %}Budgets - Budget App{% endblock %}
 
@@ -28,8 +29,8 @@
                     
                     {% with spent=budget.category.transaction_set.all|spent_percentage:budget.amount %}
                     <div class="d-flex justify-content-between mb-1">
-                        <span>Budget: ${{ budget.amount|floatformat:2 }}</span>
-                        <span>Spent: ${{ spent_amount|floatformat:2 }} ({{ spent }}%)</span>
+                        <span>Budget: {{ budget.amount|currency }}</span>
+                        <span>Spent: {{ spent_amount|currency }} ({{ spent }}%)</span>
                     </div>
                     <div class="progress">
                         <div class="progress-bar {% if spent > 100 %}bg-danger{% elif spent > 80 %}bg-warning{% else %}bg-success{% endif %}"
@@ -81,9 +82,9 @@
                             {% with spent=budget.category.transaction_set.all|sum_amount %}
                             <tr>
                                 <td>{{ budget.category.name }}</td>
-                                <td>${{ budget.amount|floatformat:2 }}</td>
-                                <td>${{ spent|floatformat:2 }}</td>
-                                <td>${{ budget.amount|subtract:spent|floatformat:2 }}</td>
+                                <td>{{ budget.amount|currency }}</td>
+                                <td>{{ spent|currency }}</td>
+                                <td>{{ budget.amount|subtract:spent|currency }}</td>
                             </tr>
                             {% endwith %}
                             {% endfor %}

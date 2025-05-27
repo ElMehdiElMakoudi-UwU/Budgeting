@@ -1,5 +1,16 @@
 from django.urls import path
 from . import views
+from rest_framework.routers import DefaultRouter
+from .views import (
+    ReceiptViewSet, QRPaymentViewSet, MobileNotificationViewSet,
+    VoiceTransactionViewSet
+)
+
+router = DefaultRouter()
+router.register(r'api/receipts', ReceiptViewSet, basename='receipt')
+router.register(r'api/qr-payments', QRPaymentViewSet, basename='qr-payment')
+router.register(r'api/notifications', MobileNotificationViewSet, basename='notification')
+router.register(r'api/voice-transactions', VoiceTransactionViewSet, basename='voice-transaction')
 
 urlpatterns = [
     # Dashboard
@@ -32,4 +43,18 @@ urlpatterns = [
     path('recurring-transactions/<int:pk>/edit/', views.RecurringTransactionUpdateView.as_view(), name='recurring-transaction-update'),
     path('recurring-transactions/<int:pk>/delete/', views.RecurringTransactionDeleteView.as_view(), name='recurring-transaction-delete'),
     path('recurring-transactions/<int:pk>/toggle/', views.toggle_recurring_transaction, name='recurring-transaction-toggle'),
-] 
+
+    # Savings Goals
+    path('savings-goals/', views.SavingsGoalListView.as_view(), name='savings-goal-list'),
+    path('savings-goals/add/', views.SavingsGoalCreateView.as_view(), name='savings-goal-create'),
+    path('savings-goals/<int:pk>/edit/', views.SavingsGoalUpdateView.as_view(), name='savings-goal-update'),
+    path('savings-goals/<int:pk>/delete/', views.SavingsGoalDeleteView.as_view(), name='savings-goal-delete'),
+    path('savings-goals/<int:pk>/update-amount/', views.update_savings_goal_amount, name='savings-goal-update-amount'),
+
+    # Bill Reminders
+    path('bill-reminders/', views.bill_reminders, name='bill_reminders'),
+    path('bill-reminders/add/', views.add_bill_reminder, name='add_bill_reminder'),
+    path('bill-reminders/<int:pk>/edit/', views.edit_bill_reminder, name='edit_bill_reminder'),
+    path('bill-reminders/<int:pk>/delete/', views.delete_bill_reminder, name='delete_bill_reminder'),
+    path('bill-reminders/<int:pk>/mark-paid/', views.mark_bill_as_paid, name='mark_bill_paid'),
+] + router.urls 

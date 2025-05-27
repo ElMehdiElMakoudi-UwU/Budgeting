@@ -1,5 +1,6 @@
 {% extends 'core/base.html' %}
 {% load budget_filters %}
+{% load currency_format %}
 
 {% block title %}Dashboard - Budget App{% endblock %}
 
@@ -9,7 +10,7 @@
         <div class="card bg-success text-white">
             <div class="card-body">
                 <h5 class="card-title">Monthly Income</h5>
-                <h2 class="card-text">${{ monthly_income|floatformat:2 }}</h2>
+                <h2 class="card-text">{{ monthly_income|currency }}</h2>
             </div>
         </div>
     </div>
@@ -17,7 +18,7 @@
         <div class="card bg-danger text-white">
             <div class="card-body">
                 <h5 class="card-title">Monthly Expenses</h5>
-                <h2 class="card-text">${{ monthly_expense|floatformat:2 }}</h2>
+                <h2 class="card-text">{{ monthly_expense|currency }}</h2>
             </div>
         </div>
     </div>
@@ -25,7 +26,7 @@
         <div class="card {% if net_amount >= 0 %}bg-info{% else %}bg-warning{% endif %} text-white">
             <div class="card-body">
                 <h5 class="card-title">Net Amount</h5>
-                <h2 class="card-text">${{ net_amount|floatformat:2 }}</h2>
+                <h2 class="card-text">{{ net_amount|currency }}</h2>
             </div>
         </div>
     </div>
@@ -46,7 +47,7 @@
                             <h6 class="mb-1">{{ transaction.category.name }}</h6>
                             <small class="text-muted">{{ transaction.date }}</small>
                         </div>
-                        <p class="mb-1">${{ transaction.amount|floatformat:2 }}</p>
+                        <p class="mb-1">{{ transaction.amount|currency }}</p>
                         {% if transaction.note %}
                         <small class="text-muted">{{ transaction.note }}</small>
                         {% endif %}
@@ -69,7 +70,7 @@
                 <div class="mb-3">
                     <div class="d-flex justify-content-between">
                         <h6>{{ budget.category.name }}</h6>
-                        <span>${{ budget.amount|floatformat:2 }}</span>
+                        <span>{{ budget.amount|currency }}</span>
                     </div>
                     <div class="progress">
                         {% with spent=budget.category.transaction_set.all|spent_percentage:budget.amount %}

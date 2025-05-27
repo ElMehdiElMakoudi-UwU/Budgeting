@@ -1,0 +1,59 @@
+{% extends 'core/base.html' %}
+
+{% block title %}
+    {% if form.instance.pk %}
+        Edit Savings Goal - Budget App
+    {% else %}
+        New Savings Goal - Budget App
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            {% if form.instance.pk %}
+                Edit Savings Goal
+            {% else %}
+                New Savings Goal
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="post" novalidate>
+            {% csrf_token %}
+            
+            {% for field in form %}
+            <div class="mb-3">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                {{ field.errors }}
+                {% if field.name == 'target_date' or field.name == 'target_amount' %}
+                    <div class="input-group">
+                        {% if field.name == 'target_amount' %}
+                            <span class="input-group-text">$</span>
+                        {% endif %}
+                        {{ field }}
+                    </div>
+                {% else %}
+                    {{ field }}
+                {% endif %}
+                {% if field.help_text %}
+                    <div class="form-text">{{ field.help_text }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary">
+                    {% if form.instance.pk %}
+                        Update Savings Goal
+                    {% else %}
+                        Create Savings Goal
+                    {% endif %}
+                </button>
+                <a href="{% url 'savings-goal-list' %}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %} 

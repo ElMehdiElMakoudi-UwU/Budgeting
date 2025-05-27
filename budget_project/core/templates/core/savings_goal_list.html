@@ -1,0 +1,82 @@
+{% extends 'core/base.html' %}
+{% load budget_filters %}
+
+{% block title %}Savings Goals - Budget App{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Savings Goals</h5>
+        <a href="{% url 'savings-goal-create' %}" class="btn btn-primary">Add Savings Goal</a>
+    </div>
+    <div class="card-body">
+        {% if savings_goals %}
+            <div class="row">
+                {% for goal in savings_goals %}
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="card-title mb-0">{{ goal.name }}</h5>
+                                <span class="badge {% if goal.status == 'completed' %}bg-success{% elif goal.status == 'paused' %}bg-warning{% else %}bg-info{% endif %}">
+                                    {{ goal.get_status_display }}
+                                </span>
+                            </div>
+                            
+                            <p class="text-muted mb-2">
+                                {% if goal.category %}
+                                Category: {{ goal.category.name }}<br>
+                                {% endif %}
+                                Target Date: {{ goal.target_date|date:"M d, Y" }}
+                            </p>
+                            
+                            {% if goal.description %}
+                            <p class="card-text">{{ goal.description }}</p>
+                            {% endif %}
+
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Progress: ${{ goal.current_amount|floatformat:2 }} / ${{ goal.target_amount|floatformat:2 }}</span>
+                                <span>{{ goal.progress_percentage }}%</span>
+                            </div>
+                            
+                            <div class="progress mb-3">
+                                <div class="progress-bar {% if goal.progress_percentage >= 100 %}bg-success{% elif goal.progress_percentage >= 75 %}bg-info{% elif goal.progress_percentage >= 50 %}bg-primary{% else %}bg-warning{% endif %}"
+                                     role="progressbar" style="width: {{ goal.progress_percentage }}%">
+                                </div>
+                            </div>
+
+                            <p class="mb-3">
+                                <small class="text-muted">
+                                    Monthly saving required: ${{ goal.monthly_saving_required|floatformat:2 }}
+                                </small>
+                            </p>
+
+                            <form action="{% url 'savings-goal-update-amount' goal.pk %}" method="post" class="mb-3">
+                                {% csrf_token %}
+                                <div class="input-group">
+                                    <input type="number" name="amount" class="form-control" value="{{ goal.current_amount }}" step="0.01" min="0">
+                                    <button type="submit" class="btn btn-outline-primary">Update Amount</button>
+                                </div>
+                            </form>
+
+                            <div class="btn-group">
+                                <a href="{% url 'savings-goal-update' goal.pk %}" class="btn btn-sm btn-info">
+                                    <i class="fas fa-edit"></i> Edit
+                                </a>
+                                <a href="{% url 'savings-goal-delete' goal.pk %}" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-trash"></i> Delete
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-center py-4">
+                <p class="mb-0">No savings goals found. Start by adding a new savings goal!</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,19 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Delete Savings Goal - Budget App{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Delete Savings Goal</h5>
+    </div>
+    <div class="card-body">
+        <p>Are you sure you want to delete the savings goal "{{ object.name }}"?</p>
+        <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Delete</button>
+            <a href="{% url 'savings-goal-list' %}" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+{% endblock %} 

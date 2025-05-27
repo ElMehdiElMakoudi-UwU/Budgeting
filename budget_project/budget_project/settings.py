@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -39,6 +40,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'widget_tweaks',
     'core',
+    'crispy_forms',
+    'crispy_bootstrap5',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -56,7 +60,7 @@ ROOT_URLCONF = 'budget_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -64,6 +68,10 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+            ],
+            'builtins': [
+                'crispy_forms.templatetags.crispy_forms_tags',
+                'crispy_forms.templatetags.crispy_forms_field',
             ],
         },
     },
@@ -109,6 +117,13 @@ LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
 
+# Currency settings
+CURRENCY_CODE = 'MAD'
+CURRENCY_SYMBOL = 'د.م.'
+CURRENCY_DECIMAL_PLACES = 2
+CURRENCY_THOUSAND_SEPARATOR = ','
+CURRENCY_DECIMAL_SEPARATOR = '.'
+
 USE_I18N = True
 
 USE_TZ = True
@@ -127,3 +142,38 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = 'login'
 LOGIN_URL = 'login'
+
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"
+
+# Media files (uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# REST Framework settings
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+}
+
+# Firebase Admin SDK configuration
+FIREBASE_CREDENTIALS = {
+    "type": "service_account",
+    "project_id": "your-project-id",
+    # Add other Firebase credentials here
+}
+
+# Initialize Firebase Admin SDK
+import firebase_admin
+from firebase_admin import credentials
+
+try:
+    cred = credentials.Certificate(FIREBASE_CREDENTIALS)
+    firebase_admin.initialize_app(cred)
+except ValueError:
+    # App already initialized
+    pass
