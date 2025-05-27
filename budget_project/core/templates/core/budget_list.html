@@ -1,0 +1,127 @@
+{% extends 'core/base.html' %}
+{% load budget_filters %}
+
+{% block title %}Budgets - Budget App{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Budgets for {{ current_date|date:"F Y" }}</h5>
+        <a href="{% url 'budget-create' %}" class="btn btn-primary">Add Budget</a>
+    </div>
+    <div class="card-body">
+        {% if budgets %}
+            {% for budget in budgets %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">{{ budget.category.name }}</h6>
+                        <div class="btn-group">
+                            <a href="{% url 'budget-update' budget.pk %}" class="btn btn-sm btn-info">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{% url 'budget-delete' budget.pk %}" class="btn btn-sm btn-danger">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    {% with spent=budget.category.transaction_set.all|spent_percentage:budget.amount %}
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Budget: ${{ budget.amount|floatformat:2 }}</span>
+                        <span>Spent: ${{ spent_amount|floatformat:2 }} ({{ spent }}%)</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar {% if spent > 100 %}bg-danger{% elif spent > 80 %}bg-warning{% else %}bg-success{% endif %}"
+                             role="progressbar" style="width: {{ spent }}%">
+                        </div>
+                    </div>
+                    {% endwith %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center py-4">
+                <p class="text-muted mb-0">No budgets set for this month</p>
+                <p class="text-muted">Click the "Add Budget" button to create one</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Monthly Overview</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="budgetChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Budget vs Actual</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Budget</th>
+                                <th>Spent</th>
+                                <th>Remaining</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for budget in budgets %}
+                            {% with spent=budget.category.transaction_set.all|sum_amount %}
+                            <tr>
+                                <td>{{ budget.category.name }}</td>
+                                <td>${{ budget.amount|floatformat:2 }}</td>
+                                <td>${{ spent|floatformat:2 }}</td>
+                                <td>${{ budget.amount|subtract:spent|floatformat:2 }}</td>
+                            </tr>
+                            {% endwith %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('budgetChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: [{% for budget in budgets %}'{{ budget.category.name }}',{% endfor %}],
+            datasets: [{
+                data: [{% for budget in budgets %}{{ budget.amount }},{% endfor %}],
+                backgroundColor: [
+                    '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+                    '#858796', '#5a5c69', '#2e59d9', '#17a673', '#2c9faf'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %} 

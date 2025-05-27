@@ -1,0 +1,77 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Recurring Transactions - Budget App{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">Recurring Transactions</h5>
+        <a href="{% url 'recurring-transaction-create' %}" class="btn btn-primary">Add Recurring Transaction</a>
+    </div>
+    <div class="card-body">
+        {% if recurring_transactions %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Description</th>
+                            <th>Type</th>
+                            <th>Category</th>
+                            <th>Amount</th>
+                            <th>Frequency</th>
+                            <th>Start Date</th>
+                            <th>End Date</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for transaction in recurring_transactions %}
+                        <tr>
+                            <td>{{ transaction.description }}</td>
+                            <td>
+                                <span class="badge {% if transaction.type == 'income' %}bg-success{% else %}bg-danger{% endif %}">
+                                    {{ transaction.get_type_display }}
+                                </span>
+                            </td>
+                            <td>{{ transaction.category.name }}</td>
+                            <td>${{ transaction.amount|floatformat:2 }}</td>
+                            <td>{{ transaction.get_frequency_display }}</td>
+                            <td>{{ transaction.start_date }}</td>
+                            <td>{{ transaction.end_date|default:"-" }}</td>
+                            <td>
+                                <form method="post" action="{% url 'recurring-transaction-toggle' transaction.pk %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm {% if transaction.is_active %}btn-success{% else %}btn-secondary{% endif %}">
+                                        {% if transaction.is_active %}
+                                            <i class="fas fa-check-circle"></i> Active
+                                        {% else %}
+                                            <i class="fas fa-pause-circle"></i> Paused
+                                        {% endif %}
+                                    </button>
+                                </form>
+                            </td>
+                            <td>
+                                <div class="btn-group">
+                                    <a href="{% url 'recurring-transaction-update' transaction.pk %}" class="btn btn-sm btn-info">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <a href="{% url 'recurring-transaction-delete' transaction.pk %}" class="btn btn-sm btn-danger">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="text-center py-4">
+                <p class="text-muted mb-0">No recurring transactions set up yet</p>
+                <p class="text-muted">Click the "Add Recurring Transaction" button to create one</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 

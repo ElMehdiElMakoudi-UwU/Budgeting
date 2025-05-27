@@ -1,0 +1,28 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Delete Category - Budget App{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Delete Category</h5>
+            </div>
+            <div class="card-body">
+                <p>Are you sure you want to delete the category "{{ object.name }}"?</p>
+                <p class="text-danger">
+                    <strong>Warning:</strong> This will also delete all associated transactions and budgets.
+                </p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                        <a href="{% url 'category-list' %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

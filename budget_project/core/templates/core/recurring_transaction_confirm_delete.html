@@ -1,0 +1,60 @@
+{% extends 'core/base.html' %}
+
+{% block title %}Delete Recurring Transaction - Budget App{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Delete Recurring Transaction</h5>
+            </div>
+            <div class="card-body">
+                <p>Are you sure you want to delete this recurring transaction?</p>
+                <dl class="row">
+                    <dt class="col-sm-4">Description</dt>
+                    <dd class="col-sm-8">{{ object.description }}</dd>
+                    
+                    <dt class="col-sm-4">Type</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge {% if object.type == 'income' %}bg-success{% else %}bg-danger{% endif %}">
+                            {{ object.get_type_display }}
+                        </span>
+                    </dd>
+                    
+                    <dt class="col-sm-4">Category</dt>
+                    <dd class="col-sm-8">{{ object.category.name }}</dd>
+                    
+                    <dt class="col-sm-4">Amount</dt>
+                    <dd class="col-sm-8">${{ object.amount|floatformat:2 }}</dd>
+                    
+                    <dt class="col-sm-4">Frequency</dt>
+                    <dd class="col-sm-8">{{ object.get_frequency_display }}</dd>
+                    
+                    <dt class="col-sm-4">Start Date</dt>
+                    <dd class="col-sm-8">{{ object.start_date }}</dd>
+                    
+                    {% if object.end_date %}
+                    <dt class="col-sm-4">End Date</dt>
+                    <dd class="col-sm-8">{{ object.end_date }}</dd>
+                    {% endif %}
+                </dl>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    This will stop all future recurring transactions from being created.
+                    Existing transactions will not be affected.
+                </div>
+
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                        <a href="{% url 'recurring-transaction-list' %}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

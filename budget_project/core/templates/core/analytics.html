@@ -1,0 +1,139 @@
+{% extends 'core/base.html' %}
+{% load budget_filters %}
+
+{% block title %}Analytics - Budget App{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Yearly Overview {{ current_year }}</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="yearlyChart" style="height: 300px;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Category Distribution</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Top Categories</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Total Amount</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category in category_summary %}
+                            <tr>
+                                <td>{{ category.category__name }}</td>
+                                <td>${{ category.total|floatformat:2 }}</td>
+                                <td>{{ category.percentage|floatformat:1 }}%</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Yearly Overview Chart
+    const yearlyCtx = document.getElementById('yearlyChart').getContext('2d');
+    new Chart(yearlyCtx, {
+        type: 'line',
+        data: {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+            datasets: [
+                {
+                    label: 'Income',
+                    data: [
+                        {% for month in "123456789101112"|make_list %}
+                        {{ yearly_data|monthly_amount:'income'|get_item:forloop.counter|default:0 }},
+                        {% endfor %}
+                    ],
+                    borderColor: '#1cc88a',
+                    backgroundColor: 'rgba(28, 200, 138, 0.1)',
+                    fill: true
+                },
+                {
+                    label: 'Expenses',
+                    data: [
+                        {% for month in "123456789101112"|make_list %}
+                        {{ yearly_data|monthly_amount:'expense'|get_item:forloop.counter|default:0 }},
+                        {% endfor %}
+                    ],
+                    borderColor: '#e74a3b',
+                    backgroundColor: 'rgba(231, 74, 59, 0.1)',
+                    fill: true
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Category Distribution Chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    new Chart(categoryCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [{% for category in category_summary %}'{{ category.category__name }}',{% endfor %}],
+            datasets: [{
+                data: [{% for category in category_summary %}{{ category.total }},{% endfor %}],
+                backgroundColor: [
+                    '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+                    '#858796', '#5a5c69', '#2e59d9', '#17a673', '#2c9faf'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %} 
