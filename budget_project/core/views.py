@@ -13,7 +13,7 @@ from .models import (
     ExpenseGroupMember, SharedExpense, ExpenseShare
 )
 from django.contrib import messages
-from .forms import CategoryForm, TransactionForm, BudgetForm, RecurringTransactionForm, SavingsGoalForm, BillReminderForm, ExpenseGroupForm
+from .forms import CategoryForm, TransactionForm, BudgetForm, RecurringTransactionForm, SavingsGoalForm, BillReminderForm, ExpenseGroupForm, UserRegistrationForm
 from decimal import Decimal
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -929,23 +929,41 @@ def expense_group_detail(request, pk):
         status='PENDING'
     ).exclude(user=request.user).aggregate(total=Sum('amount'))['total'] or 0
     
-    # Calculate member shares for display
-    for expense in expenses:
-        shares = expense.get_member_shares()
-        for user, amount in shares.items():
-            if user not in member_shares:
-                member_shares[user] = {'paid': 0, 'owed': 0}
-            
-            share = expense.shares.filter(user=user).first()
-            if share and share.status == 'PAID':
-                member_shares[user]['paid'] += amount
-            else:
-                member_shares[user]['owed'] += amount
+    # Get all members with their roles and balances
+    members = []
+    for member in group.expensegroupmember_set.select_related('user').all():
+        # Calculate member's balance
+        member_shares = ExpenseShare.objects.filter(
+            expense__group=group,
+            user=member.user
+        ).aggregate(
+            total_owed=Sum('amount', filter=Q(status='PENDING')),
+            total_paid=Sum('amount', filter=Q(status='PAID'))
+        )
+        
+        # Calculate amount this member owes to others
+        owed_to_others = member_shares['total_owed'] or 0
+        
+        # Calculate amount others owe to this member
+        owed_by_others = ExpenseShare.objects.filter(
+            expense__group=group,
+            expense__created_by=member.user,
+            status='PENDING'
+        ).exclude(user=member.user).aggregate(total=Sum('amount'))['total'] or 0
+        
+        # Calculate net balance
+        balance = (member_shares['total_paid'] or 0) - owed_to_others + owed_by_others
+        
+        members.append({
+            'user': member.user,
+            'is_admin': member.role == 'ADMIN',
+            'balance': balance
+        })
     
     context = {
         'group': group,
         'expenses': expenses,
-        'member_shares': member_shares,
+        'members': members,
         'is_admin': group.expensegroupmember_set.filter(user=request.user, role='ADMIN').exists(),
         'total_expenses': total_expenses,
         'user_share': user_share,
@@ -1233,3 +1251,15 @@ def delete_shared_expense(request, group_pk, pk):
         return redirect('expense-group-detail', pk=group_pk)
     
     return render(request, 'core/shared_expense_confirm_delete.html', {'expense': expense})
+
+def register(request):
+    """View for user registration."""
+    if request.method == 'POST':
+        form = UserRegistrationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            messages.success(request, 'Account created successfully! You can now login.')
+            return redirect('login')
+    else:
+        form = UserRegistrationForm()
+    return render(request, 'registration/register.html', {'form': form})
