@@ -1,0 +1,92 @@
+{% extends 'core/base.html' %}
+{% load currency_format %}
+
+{% block title %}Mark Payment - {{ share.expense.title }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-check-circle me-2"></i>Mark Payment as Complete
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- Payment Details -->
+                <div class="mb-4">
+                    <h6 class="text-muted mb-3">Expense Details</h6>
+                    <dl class="row">
+                        <dt class="col-sm-4">Title</dt>
+                        <dd class="col-sm-8">{{ share.expense.title }}</dd>
+
+                        <dt class="col-sm-4">Created By</dt>
+                        <dd class="col-sm-8">{{ share.expense.created_by.get_full_name|default:share.expense.created_by.username }}</dd>
+
+                        <dt class="col-sm-4">Date</dt>
+                        <dd class="col-sm-8">{{ share.expense.date|date:"M d, Y" }}</dd>
+
+                        <dt class="col-sm-4">Your Share</dt>
+                        <dd class="col-sm-8">{{ share.amount|currency }}</dd>
+
+                        <dt class="col-sm-4">Due Date</dt>
+                        <dd class="col-sm-8">
+                            {% if share.expense.due_date %}
+                            {{ share.expense.due_date|date:"M d, Y" }}
+                            {% else %}
+                            <span class="text-muted">Not specified</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <!-- Payment Proof Upload -->
+                    <div class="mb-3">
+                        <label class="form-label">Payment Proof (Optional)</label>
+                        <input type="file" name="payment_proof" class="form-control" accept="image/*,.pdf">
+                        <div class="form-text">
+                            Upload a screenshot or PDF of your payment confirmation
+                        </div>
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-4">
+                        <label class="form-label">Notes (Optional)</label>
+                        <textarea name="notes" class="form-control" rows="3" placeholder="Add any notes about your payment..."></textarea>
+                    </div>
+
+                    <!-- Confirmation -->
+                    <div class="alert alert-info">
+                        <div class="d-flex">
+                            <div class="me-3">
+                                <i class="fas fa-info-circle fa-2x"></i>
+                            </div>
+                            <div>
+                                <h6 class="alert-heading">Confirmation</h6>
+                                <p class="mb-0">
+                                    By clicking "Mark as Paid", you confirm that you have completed the payment of 
+                                    <strong>{{ share.amount|currency }}</strong> to 
+                                    <strong>{{ share.expense.created_by.get_full_name|default:share.expense.created_by.username }}</strong>.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'shared-expense-detail' share.expense.group.id share.expense.id %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-check me-2"></i>Mark as Paid
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

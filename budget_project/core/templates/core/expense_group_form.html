@@ -1,0 +1,159 @@
+{% extends 'core/base.html' %}
+{% load widget_tweaks %}
+
+{% block title %}{% if form.instance.pk %}Edit{% else %}Create{% endif %} Expense Group - Budget App{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-users me-2"></i>
+                    {% if form.instance.pk %}Edit{% else %}Create{% endif %} Expense Group
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in form.non_field_errors %}
+                            {{ error }}
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    <!-- Group Details -->
+                    <div class="mb-3">
+                        <label for="{{ form.name.id_for_label }}" class="form-label">Group Name</label>
+                        {{ form.name|add_class:"form-control" }}
+                        {% if form.name.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ form.name.errors|join:", " }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="{{ form.description.id_for_label }}" class="form-label">Description</label>
+                        {{ form.description|add_class:"form-control" }}
+                        {% if form.description.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ form.description.errors|join:", " }}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">Briefly describe the purpose of this expense group</div>
+                    </div>
+
+                    <!-- Member Settings -->
+                    {% if not form.instance.pk %}
+                    <div class="mb-3">
+                        <label class="form-label">Initial Members</label>
+                        <div class="input-group">
+                            {{ form.members|add_class:"form-control" }}
+                            <button type="button" class="btn btn-outline-primary" id="addMemberBtn">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        {% if form.members.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ form.members.errors|join:", " }}
+                        </div>
+                        {% endif %}
+                        <div class="form-text">Enter email addresses of people you want to invite</div>
+                    </div>
+
+                    <div id="membersList" class="mb-3">
+                        <!-- Dynamic member list will be populated here -->
+                    </div>
+                    {% endif %}
+
+                    <!-- Split Settings -->
+                    <div class="mb-3">
+                        <label class="form-label">Default Split Type</label>
+                        {{ form.default_split_type|add_class:"form-select" }}
+                        {% if form.default_split_type.errors %}
+                        <div class="invalid-feedback d-block">
+                            {{ form.default_split_type.errors|join:", " }}
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            {{ form.auto_approve|add_class:"form-check-input" }}
+                            <label class="form-check-label" for="{{ form.auto_approve.id_for_label }}">
+                                Auto-approve expenses
+                            </label>
+                        </div>
+                        <div class="form-text">If checked, new expenses will be automatically approved</div>
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'expense-groups' %}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Group
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const membersList = document.getElementById('membersList');
+    const addMemberBtn = document.getElementById('addMemberBtn');
+    const membersInput = document.querySelector('input[name="members"]');
+    
+    if (addMemberBtn && membersInput) {
+        addMemberBtn.addEventListener('click', function() {
+            const email = membersInput.value.trim();
+            if (email && isValidEmail(email)) {
+                addMemberChip(email);
+                membersInput.value = '';
+            }
+        });
+
+        membersInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const email = this.value.trim();
+                if (email && isValidEmail(email)) {
+                    addMemberChip(email);
+                    this.value = '';
+                }
+            }
+        });
+    }
+
+    function addMemberChip(email) {
+        const chip = document.createElement('div');
+        chip.className = 'badge bg-primary me-2 mb-2';
+        chip.innerHTML = `
+            ${email}
+            <button type="button" class="btn-close btn-close-white ms-2" 
+                    aria-label="Remove" style="font-size: 0.5em;"></button>
+        `;
+        
+        chip.querySelector('.btn-close').addEventListener('click', function() {
+            chip.remove();
+        });
+        
+        membersList.appendChild(chip);
+    }
+
+    function isValidEmail(email) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+});
+</script>
+{% endblock %} 

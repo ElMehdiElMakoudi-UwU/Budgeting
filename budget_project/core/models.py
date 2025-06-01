@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 from django.utils import timezone
+from django.db.models import Sum
 
 class Category(models.Model):
     TYPE_CHOICES = [
@@ -288,3 +289,176 @@ class DeviceToken(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.device_type} Token"
+
+class ExpenseGroup(models.Model):
+    SPLIT_TYPE_CHOICES = [
+        ('EQUAL', 'Split Equally'),
+        ('PERCENTAGE', 'Split by Percentage'),
+        ('CUSTOM', 'Custom Split'),
+    ]
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_groups')
+    members = models.ManyToManyField(User, through='ExpenseGroupMember', related_name='expense_groups')
+    default_split_type = models.CharField(max_length=10, choices=SPLIT_TYPE_CHOICES, default='EQUAL')
+    auto_approve = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+class ExpenseGroupMember(models.Model):
+    ROLE_CHOICES = [
+        ('ADMIN', 'Administrator'),
+        ('MEMBER', 'Member'),
+    ]
+
+    group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='MEMBER')
+    joined_at = models.DateTimeField(auto_now_add=True)
+    share_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=100.00)
+    
+    class Meta:
+        unique_together = ['group', 'user']
+
+    def __str__(self):
+        return f"{self.user.username} in {self.group.name}"
+
+class SharedExpense(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PARTIALLY_PAID', 'Partially Paid'),
+        ('PAID', 'Paid'),
+        ('SETTLED', 'Settled'),
+    ]
+
+    SPLIT_TYPE_CHOICES = [
+        ('EQUAL', 'Split Equally'),
+        ('PERCENTAGE', 'Split by Percentage'),
+        ('CUSTOM', 'Custom Split'),
+    ]
+
+    title = models.CharField(max_length=255)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField(blank=True)
+    date = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    due_date = models.DateField(null=True, blank=True)
+    category = models.ForeignKey('Category', on_delete=models.SET_NULL, null=True)
+    created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_shared_expenses')
+    group = models.ForeignKey(ExpenseGroup, on_delete=models.CASCADE)
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING')
+    split_type = models.CharField(max_length=10, choices=SPLIT_TYPE_CHOICES, default='EQUAL')
+    receipt = models.ImageField(upload_to='shared_expense_receipts/', null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.amount}"
+
+    def get_member_shares(self):
+        """Calculate share amount for each member based on split type."""
+        if self.split_type == 'EQUAL':
+            # Get active members count
+            member_count = self.group.members.count()
+            if member_count == 0:
+                return {}
+                
+            # Calculate equal share amount
+            share_amount = self.amount / member_count
+            
+            # Create shares for all members
+            shares = {}
+            for member in self.group.members.all():
+                # The person who paid gets their share subtracted from what others owe them
+                if member == self.created_by:
+                    shares[member] = Decimal('0.00')
+                else:
+                    shares[member] = share_amount
+            return shares
+            
+        elif self.split_type == 'PERCENTAGE':
+            shares = {}
+            total_percentage = Decimal('0.00')
+            
+            # Get all member percentages
+            for member in self.group.expensegroupmember_set.all():
+                if member.share_percentage > 0:
+                    total_percentage += member.share_percentage
+                    
+            if total_percentage == 0:
+                return {}
+                
+            # Calculate each member's share based on their percentage
+            for member in self.group.expensegroupmember_set.all():
+                if member.share_percentage > 0:
+                    share_amount = (self.amount * member.share_percentage) / total_percentage
+                    # The person who paid gets their share subtracted from what others owe them
+                    if member.user == self.created_by:
+                        shares[member.user] = Decimal('0.00')
+                    else:
+                        shares[member.user] = share_amount.quantize(Decimal('.01'))
+            return shares
+            
+        else:  # CUSTOM
+            # For custom splits, we use the ExpenseShare amounts directly
+            shares = {}
+            total_shares = self.shares.exclude(user=self.created_by).aggregate(
+                total=Sum('amount')
+            )['total'] or Decimal('0.00')
+            
+            # If no custom shares defined yet, return empty dict
+            if total_shares == 0:
+                return {}
+                
+            # Get all custom shares
+            for share in self.shares.all():
+                if share.user == self.created_by:
+                    shares[share.user] = Decimal('0.00')
+                else:
+                    shares[share.user] = share.amount
+            return shares
+
+    def can_edit(self, user):
+        """Check if the user can edit this expense."""
+        # Creator can always edit
+        if self.created_by == user:
+            return True
+        # Group admin can edit
+        return self.group.expensegroupmember_set.filter(user=user, role='ADMIN').exists()
+
+    @property
+    def is_settled(self):
+        """Check if the expense is fully settled."""
+        return self.status == 'SETTLED'
+
+class ExpenseShare(models.Model):
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+    ]
+
+    expense = models.ForeignKey(SharedExpense, on_delete=models.CASCADE, related_name='shares')
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    paid_at = models.DateTimeField(null=True, blank=True)
+    payment_proof = models.ImageField(upload_to='payment_proofs/', null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ['expense', 'user']
+
+    def __str__(self):
+        return f"{self.user.username}'s share of {self.expense.title}"
+
+    def mark_as_paid(self):
+        self.status = 'PAID'
+        self.paid_at = timezone.now()
+        self.save()
+        
+        # Check if all shares are paid and update expense status
+        all_shares_paid = self.expense.shares.filter(status='PENDING').count() == 0
+        if all_shares_paid:
+            self.expense.status = 'SETTLED'
+            self.expense.save()

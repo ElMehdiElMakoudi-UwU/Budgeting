@@ -57,4 +57,18 @@ urlpatterns = [
     path('bill-reminders/<int:pk>/edit/', views.edit_bill_reminder, name='edit_bill_reminder'),
     path('bill-reminders/<int:pk>/delete/', views.delete_bill_reminder, name='delete_bill_reminder'),
     path('bill-reminders/<int:pk>/mark-paid/', views.mark_bill_as_paid, name='mark_bill_paid'),
+
+    # Shared Expenses
+    path('expense-groups/', views.expense_groups, name='expense-groups'),
+    path('expense-groups/create/', views.create_expense_group, name='create-expense-group'),
+    path('expense-groups/<int:pk>/', views.expense_group_detail, name='expense-group-detail'),
+    path('expense-groups/<int:pk>/edit/', views.edit_expense_group, name='edit-expense-group'),
+    path('expense-groups/<int:pk>/delete/', views.delete_expense_group, name='delete-expense-group'),
+    path('expense-groups/<int:pk>/members/', views.manage_group_members, name='manage-group-members'),
+    path('expense-groups/<int:pk>/invite/', views.invite_member, name='invite-member'),
+    path('expense-groups/<int:group_pk>/expenses/create/', views.create_shared_expense, name='create-shared-expense'),
+    path('expense-groups/<int:group_pk>/expenses/<int:pk>/', views.shared_expense_detail, name='shared-expense-detail'),
+    path('expense-groups/<int:group_pk>/expenses/<int:pk>/edit/', views.edit_shared_expense, name='edit-shared-expense'),
+    path('expense-groups/<int:group_pk>/expenses/<int:pk>/delete/', views.delete_shared_expense, name='delete-shared-expense'),
+    path('expense-shares/<int:share_pk>/mark-paid/', views.mark_share_as_paid, name='mark-share-paid'),
 ] + router.urls 

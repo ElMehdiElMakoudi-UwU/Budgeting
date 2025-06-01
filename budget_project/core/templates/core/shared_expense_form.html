@@ -1,0 +1,227 @@
+{% extends 'core/base.html' %}
+
+{% block title %}{% if expense %}Edit{% else %}Create{% endif %} Shared Expense - Budget App{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-receipt me-2"></i>
+                    {% if expense %}Edit{% else %}Create{% endif %} Shared Expense
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" id="expenseForm">
+                    {% csrf_token %}
+                    
+                    <!-- Basic Info -->
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <input type="text" name="title" class="form-control" value="{{ expense.title }}" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Amount</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" name="amount" class="form-control" value="{{ expense.amount }}" step="0.01" min="0" required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Date</label>
+                                <input type="date" name="date" class="form-control" value="{{ expense.date|date:'Y-m-d' }}" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Due Date</label>
+                                <input type="date" name="due_date" class="form-control" value="{{ expense.due_date|date:'Y-m-d' }}">
+                                <div class="form-text">Optional</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Category</label>
+                        <select name="category" class="form-select">
+                            <option value="">-- Select Category --</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}" {% if expense.category_id == category.id %}selected{% endif %}>
+                                {{ category.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Split Type</label>
+                        <select name="split_type" class="form-select" id="splitType" required>
+                            <option value="EQUAL" {% if expense.split_type == 'EQUAL' %}selected{% endif %}>Split Equally</option>
+                            <option value="PERCENTAGE" {% if expense.split_type == 'PERCENTAGE' %}selected{% endif %}>Split by Percentage</option>
+                            <option value="CUSTOM" {% if expense.split_type == 'CUSTOM' %}selected{% endif %}>Custom Split</option>
+                        </select>
+                    </div>
+
+                    <!-- Percentage Split Section -->
+                    <div id="percentageSplitSection" class="mb-3" style="display: none;">
+                        <label class="form-label">Member Percentages</label>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>Total percentage should add up to 100%
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Member</th>
+                                        <th>Percentage</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for member in group.expensegroupmember_set.all %}
+                                    {% if member.user != request.user %}
+                                    <tr>
+                                        <td>{{ member.user.get_full_name|default:member.user.username }}</td>
+                                        <td>
+                                            <div class="input-group">
+                                                <input type="number" 
+                                                       name="percentage_{{ member.user.id }}" 
+                                                       class="form-control percentage-input" 
+                                                       min="0" 
+                                                       max="100" 
+                                                       step="0.01" 
+                                                       value="0">
+                                                <span class="input-group-text">%</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span class="share-amount">$0.00</span>
+                                        </td>
+                                    </tr>
+                                    {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-info">
+                                        <td><strong>Total</strong></td>
+                                        <td><span id="totalPercentage">0</span>%</td>
+                                        <td><span id="totalAmount">$0.00</span></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Custom Split Section -->
+                    <div id="customSplitSection" class="mb-3" style="display: none;">
+                        <!-- Will be implemented later -->
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3">{{ expense.description }}</textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Receipt</label>
+                        <input type="file" name="receipt" class="form-control" accept="image/*">
+                        {% if expense.receipt %}
+                        <div class="form-text">
+                            Current receipt: {{ expense.receipt.name }}
+                            <a href="{{ expense.receipt.url }}" target="_blank">(View)</a>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Submit Buttons -->
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'expense-group-detail' group.id %}" class="btn btn-secondary">
+                            <i class="fas fa-times me-2"></i>Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i>Save Expense
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const splitTypeSelect = document.querySelector('#splitType');
+    const percentageSplitSection = document.querySelector('#percentageSplitSection');
+    const customSplitSection = document.querySelector('#customSplitSection');
+    const amountInput = document.querySelector('input[name="amount"]');
+    const percentageInputs = document.querySelectorAll('.percentage-input');
+    const totalPercentageSpan = document.querySelector('#totalPercentage');
+    const totalAmountSpan = document.querySelector('#totalAmount');
+    const expenseForm = document.querySelector('#expenseForm');
+    
+    function updateSplitSections() {
+        const splitType = splitTypeSelect.value;
+        percentageSplitSection.style.display = splitType === 'PERCENTAGE' ? 'block' : 'none';
+        customSplitSection.style.display = splitType === 'CUSTOM' ? 'block' : 'none';
+    }
+    
+    function updateAmounts() {
+        const totalAmount = parseFloat(amountInput.value) || 0;
+        let totalPercentage = 0;
+        
+        percentageInputs.forEach(input => {
+            const percentage = parseFloat(input.value) || 0;
+            totalPercentage += percentage;
+            
+            // Update individual share amount
+            const shareAmount = (totalAmount * percentage / 100).toFixed(2);
+            const shareAmountSpan = input.closest('tr').querySelector('.share-amount');
+            shareAmountSpan.textContent = `$${shareAmount}`;
+        });
+        
+        // Update totals
+        totalPercentageSpan.textContent = totalPercentage.toFixed(2);
+        totalAmountSpan.textContent = `$${totalAmount.toFixed(2)}`;
+        
+        // Validate total percentage
+        if (totalPercentage > 100) {
+            totalPercentageSpan.classList.add('text-danger');
+        } else {
+            totalPercentageSpan.classList.remove('text-danger');
+        }
+    }
+    
+    // Event listeners
+    splitTypeSelect.addEventListener('change', updateSplitSections);
+    amountInput.addEventListener('input', updateAmounts);
+    percentageInputs.forEach(input => {
+        input.addEventListener('input', updateAmounts);
+    });
+    
+    // Form submission validation
+    expenseForm.addEventListener('submit', function(e) {
+        if (splitTypeSelect.value === 'PERCENTAGE') {
+            const totalPercentage = parseFloat(totalPercentageSpan.textContent);
+            if (totalPercentage > 100) {
+                e.preventDefault();
+                alert('Total percentage cannot exceed 100%');
+            } else if (totalPercentage === 0) {
+                e.preventDefault();
+                alert('Please set percentage shares for members');
+            }
+        }
+    });
+    
+    // Initial setup
+    updateSplitSections();
+    updateAmounts();
+});
+</script>
+{% endblock %} 
