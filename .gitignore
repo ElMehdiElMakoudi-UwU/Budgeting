@@ -40,4 +40,27 @@ ENV/
 
 # OS
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Environments
+.env
+.venv
+env/
+venv.bak/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history
+
+# Django stuff
+local_settings.py
+django_app.log
+
+# Database backup files
+*.bak
+*.dat
+*.dir 
