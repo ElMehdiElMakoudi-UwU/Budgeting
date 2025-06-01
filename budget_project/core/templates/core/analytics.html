@@ -3,6 +3,16 @@
 
 {% block title %}Analytics - Budget App{% endblock %}
 
+{% block extra_css %}
+<style>
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Yearly Overview -->
 <div class="row">
@@ -150,6 +160,66 @@
         </div>
     </div>
 </div>
+
+<!-- Shared Expenses Analytics -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Shared Expenses Analytics</h5>
+            </div>
+            <div class="card-body">
+                <!-- Summary Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted mb-2">Total Owed</h6>
+                                <h4 class="text-danger mb-0">{{ personal_shares.total_owed|default:0|currency }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted mb-2">Total Paid</h6>
+                                <h4 class="text-success mb-0">{{ personal_shares.total_paid|default:0|currency }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted mb-2">Pending to Receive</h6>
+                                <h4 class="text-warning mb-0">{{ payment_stats.total_pending|default:0|currency }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted mb-2">Total Received</h6>
+                                <h4 class="text-success mb-0">{{ payment_stats.total_received|default:0|currency }}</h4>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monthly Trend -->
+                <h6 class="mb-3">Monthly Shared Expenses Trend</h6>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="sharedExpensesTrendChart"></canvas>
+                </div>
+
+                <!-- Group-wise Spending -->
+                <h6 class="mt-4 mb-3">Group-wise Spending</h6>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="groupSpendingChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -157,7 +227,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Yearly Overview Chart
     const yearlyCtx = document.getElementById('yearlyChart').getContext('2d');
-    new Chart(yearlyCtx, {
+    const yearlyChart = new Chart(yearlyCtx, {
         type: 'line',
         data: {
             labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
@@ -204,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Category Distribution Chart
     const categoryCtx = document.getElementById('categoryChart').getContext('2d');
-    new Chart(categoryCtx, {
+    const categoryChart = new Chart(categoryCtx, {
         type: 'doughnut',
         data: {
             labels: [{% for category in category_summary %}'{{ category.category__name }}',{% endfor %}],
@@ -229,7 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Budget vs Actual Chart
     const budgetCtx = document.getElementById('budgetVsActualChart').getContext('2d');
-    new Chart(budgetCtx, {
+    const budgetChart = new Chart(budgetCtx, {
         type: 'bar',
         data: {
             labels: [{% for item in budget_vs_actual %}'{{ item.category }}',{% endfor %}],
@@ -249,6 +319,66 @@ document.addEventListener('DOMContentLoaded', function() {
                     borderWidth: 1
                 }
             ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Shared Expenses Trend Chart
+    const trendCtx = document.getElementById('sharedExpensesTrendChart').getContext('2d');
+    const trendChart = new Chart(trendCtx, {
+        type: 'line',
+        data: {
+            labels: [{% for item in shared_expenses_trend %}'{{ item.date__month }}',{% endfor %}],
+            datasets: [{
+                label: 'Monthly Total',
+                data: [{% for item in shared_expenses_trend %}{{ item.total }},{% endfor %}],
+                borderColor: '#4e73df',
+                backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Group Spending Chart
+    const groupCtx = document.getElementById('groupSpendingChart').getContext('2d');
+    const groupChart = new Chart(groupCtx, {
+        type: 'bar',
+        data: {
+            labels: [{% for item in group_spending %}'{{ item.group__name }}',{% endfor %}],
+            datasets: [{
+                label: 'Total Spending',
+                data: [{% for item in group_spending %}{{ item.total }},{% endfor %}],
+                backgroundColor: 'rgba(78, 115, 223, 0.5)',
+                borderColor: 'rgba(78, 115, 223, 1)',
+                borderWidth: 1
+            }]
         },
         options: {
             responsive: true,

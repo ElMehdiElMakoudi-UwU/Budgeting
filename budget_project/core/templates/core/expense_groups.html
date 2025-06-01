@@ -1,0 +1,156 @@
+{% extends 'core/base.html' %}
+{% load budget_filters %}
+{% load currency_format %}
+
+{% block title %}Shared Expenses - Budget App{% endblock %}
+
+{% block content %}
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <h6 class="card-title">Total Groups</h6>
+                <h3 class="card-text mb-0">{{ expense_groups|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <h6 class="card-title">Total Paid</h6>
+                <h3 class="card-text mb-0">{{ total_paid|currency }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <h6 class="card-title">Pending to Pay</h6>
+                <h3 class="card-text mb-0">{{ total_pending|currency }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h6 class="card-title">To Receive</h6>
+                <h3 class="card-text mb-0">{{ total_to_receive|currency }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Expense Groups List -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-users me-2"></i>Expense Groups
+        </h5>
+        <a href="{% url 'create-expense-group' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-2"></i>Create Group
+        </a>
+    </div>
+    <div class="card-body">
+        {% if expense_groups %}
+        <div class="row">
+            {% for group in expense_groups %}
+            <div class="col-md-6 mb-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">{{ group.name }}</h6>
+                        <div class="dropdown">
+                            <button class="btn btn-link text-dark" type="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'expense-group-detail' group.id %}">
+                                        <i class="fas fa-info-circle me-2"></i>View Details
+                                    </a>
+                                </li>
+                                {% if group.is_admin %}
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'edit-expense-group' group.id %}">
+                                        <i class="fas fa-edit me-2"></i>Edit Group
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item" href="{% url 'manage-group-members' group.id %}">
+                                        <i class="fas fa-user-friends me-2"></i>Manage Members
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <a class="dropdown-item text-danger" href="{% url 'delete-expense-group' group.id %}">
+                                        <i class="fas fa-trash me-2"></i>Delete Group
+                                    </a>
+                                </li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted small mb-3">{{ group.description }}</p>
+                        
+                        <!-- Group Stats -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <div class="border rounded p-2">
+                                    <small class="text-muted d-block">Members</small>
+                                    <strong>{{ group.member_count }}</strong>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="border rounded p-2">
+                                    <small class="text-muted d-block">Expenses</small>
+                                    <strong>{{ group.expense_count }}</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Balance Info -->
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <small class="text-muted d-block">Your Balance</small>
+                                <span class="{% if group.user_balance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ group.user_balance|currency }}
+                                </span>
+                            </div>
+                            <a href="{% url 'expense-group-detail' group.id %}" class="btn btn-sm btn-outline-primary">
+                                View Details
+                            </a>
+                        </div>
+
+                        <!-- Recent Activity -->
+                        {% if group.recent_activities %}
+                        <div class="border-top pt-2">
+                            <small class="text-muted d-block mb-2">Recent Activity</small>
+                            {% for activity in group.recent_activities|slice:":2" %}
+                            <div class="d-flex justify-content-between align-items-center small mb-1">
+                                <span>{{ activity.description }}</span>
+                                <span class="text-muted">{{ activity.date|date:"M d" }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <div class="mb-3">
+                <i class="fas fa-users fa-3x text-muted"></i>
+            </div>
+            <h5>No Expense Groups Yet</h5>
+            <p class="text-muted mb-3">Create a group to start sharing expenses with others</p>
+            <a href="{% url 'create-expense-group' %}" class="btn btn-primary">
+                <i class="fas fa-plus me-2"></i>Create Your First Group
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 

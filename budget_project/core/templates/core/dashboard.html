@@ -4,6 +4,17 @@
 
 {% block title %}Dashboard - Budget App{% endblock %}
 
+{% block extra_css %}
+<style>
+.progress {
+    height: 10px;
+}
+.progress-bar[data-progress] {
+    width: var(--progress);
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Summary Cards -->
 <div class="row mb-4">
@@ -76,9 +87,10 @@
                         <h6 class="mb-0">{{ goal.name }}</h6>
                         <span class="text-muted">{{ goal.current_amount|currency }} / {{ goal.target_amount|currency }}</span>
                     </div>
-                    <div class="progress" style="height: 10px;">
+                    <div class="progress">
                         <div class="progress-bar bg-success" role="progressbar" 
-                             style="width: {{ goal.progress_percentage }}%"
+                             data-progress="{{ goal.progress_percentage }}%"
+                             style="--progress: {{ goal.progress_percentage }}%"
                              aria-valuenow="{{ goal.progress_percentage }}" 
                              aria-valuemin="0" aria-valuemax="100">
                         </div>
@@ -114,9 +126,13 @@
                             {{ budget.spent_amount|currency }} / {{ budget.amount|currency }}
                         </span>
                     </div>
-                    <div class="progress" style="height: 10px;">
-                        <div class="progress-bar {% if budget.spent_percentage > 100 %}bg-danger{% elif budget.spent_percentage > 80 %}bg-warning{% else %}bg-success{% endif %}"
-                             role="progressbar" style="width: {{ budget.spent_percentage }}%">
+                    <div class="progress">
+                        <div class="progress-bar {% if budget.spent_percentage > 100 %}bg-danger{% elif budget.spent_percentage > 80 %}bg-warning{% else %}bg-success{% endif %}" 
+                             role="progressbar"
+                             data-progress="{{ budget.spent_percentage }}%"
+                             style="--progress: {{ budget.spent_percentage }}%"
+                             aria-valuenow="{{ budget.spent_percentage }}" 
+                             aria-valuemin="0" aria-valuemax="100">
                         </div>
                     </div>
                     <small class="text-muted">{{ budget.spent_percentage|floatformat:1 }}% spent</small>
@@ -191,6 +207,61 @@
                     <a href="{% url 'recurring-transaction-list' %}" class="btn btn-link btn-sm">View All Recurring</a>
                 </div>
                 {% endif %}
+            </div>
+        </div>
+
+        <!-- Shared Expenses Summary -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Shared Expenses</h5>
+                <a href="{% url 'expense-groups' %}" class="btn btn-primary btn-sm">View All</a>
+            </div>
+            <div class="card-body">
+                {% if shared_expenses_owed > 0 or shared_expenses_to_receive > 0 %}
+                <div class="row mb-4">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h6 class="text-danger mb-2">You Owe</h6>
+                            <h4>{{ shared_expenses_owed|currency }}</h4>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h6 class="text-success mb-2">You'll Receive</h6>
+                            <h4>{{ shared_expenses_to_receive|currency }}</h4>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if pending_shared_expenses > 0 %}
+                <div class="alert alert-warning mb-4">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    You have {{ pending_shared_expenses }} pending shared expense{% if pending_shared_expenses > 1 %}s{% endif %} to settle
+                </div>
+                {% endif %}
+
+                <div class="list-group list-group-flush">
+                    {% for expense in recent_shared_expenses %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ expense.title }}</h6>
+                            <span class="badge {% if expense.status == 'SETTLED' %}bg-success{% elif expense.status == 'PARTIALLY_PAID' %}bg-warning{% else %}bg-danger{% endif %}">
+                                {{ expense.amount|currency }}
+                            </span>
+                        </div>
+                        <p class="mb-1">{{ expense.group.name }}</p>
+                        <small class="text-muted">
+                            <i class="fas fa-calendar"></i> {{ expense.date }}
+                            {% if expense.due_date %}
+                            <span class="ms-2"><i class="fas fa-clock"></i> Due: {{ expense.due_date }}</span>
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center my-3">No recent shared expenses</p>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </div>

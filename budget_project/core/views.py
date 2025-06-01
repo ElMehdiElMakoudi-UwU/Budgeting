@@ -3,12 +3,17 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 from django.urls import reverse_lazy
-from django.db.models import Sum
+from django.db.models import Sum, Q
 from django.utils import timezone
 from datetime import datetime
-from .models import Category, Transaction, Budget, RecurringTransaction, SavingsGoal, BillReminder
+from .models import (
+    Category, Transaction, Budget, RecurringTransaction, 
+    SavingsGoal, BillReminder, Receipt, QRPayment, 
+    MobileNotification, VoiceTransaction, ExpenseGroup,
+    ExpenseGroupMember, SharedExpense, ExpenseShare
+)
 from django.contrib import messages
-from .forms import CategoryForm, TransactionForm, BudgetForm, RecurringTransactionForm, SavingsGoalForm, BillReminderForm
+from .forms import CategoryForm, TransactionForm, BudgetForm, RecurringTransactionForm, SavingsGoalForm, BillReminderForm, ExpenseGroupForm
 from decimal import Decimal
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -28,6 +33,7 @@ import json
 import firebase_admin
 from firebase_admin import credentials, messaging
 from django import forms
+from django.contrib.auth.models import User
 
 @login_required
 def dashboard(request):
@@ -80,14 +86,14 @@ def dashboard(request):
     savings_goals = SavingsGoal.objects.filter(
         user=request.user,
         status='in_progress'
-    ).select_related('category')[:3]  # Show top 3 active goals
+    ).select_related('category')[:3]
 
     # Upcoming Bills
     upcoming_bills = BillReminder.objects.filter(
         user=request.user,
         status='pending',
         due_date__gte=current_date
-    ).order_by('due_date')[:3]  # Show next 3 upcoming bills
+    ).order_by('due_date')[:3]
 
     overdue_bills = BillReminder.objects.filter(
         user=request.user,
@@ -99,7 +105,33 @@ def dashboard(request):
     recurring_transactions = RecurringTransaction.objects.filter(
         user=request.user,
         is_active=True
-    ).select_related('category')[:3]  # Show top 3 active recurring transactions
+    ).select_related('category')[:3]
+
+    # Shared Expenses Summary
+    user_groups = ExpenseGroup.objects.filter(
+        members=request.user
+    ).select_related('created_by')
+
+    pending_shared_expenses = SharedExpense.objects.filter(
+        group__in=user_groups,
+        shares__user=request.user,
+        shares__status='PENDING'
+    ).count()
+
+    recent_shared_expenses = SharedExpense.objects.filter(
+        group__in=user_groups
+    ).select_related('category', 'created_by').order_by('-date')[:3]
+
+    # Calculate total owed and total to receive
+    shared_expenses_owed = ExpenseShare.objects.filter(
+        user=request.user,
+        status='PENDING'
+    ).aggregate(total=Sum('amount'))['total'] or 0
+
+    shared_expenses_to_receive = ExpenseShare.objects.filter(
+        expense__created_by=request.user,
+        status='PENDING'
+    ).exclude(user=request.user).aggregate(total=Sum('amount'))['total'] or 0
 
     context = {
         'monthly_income': monthly_income,
@@ -112,6 +144,10 @@ def dashboard(request):
         'overdue_bills': overdue_bills,
         'recurring_transactions': recurring_transactions,
         'current_date': current_date,
+        'pending_shared_expenses': pending_shared_expenses,
+        'recent_shared_expenses': recent_shared_expenses,
+        'shared_expenses_owed': shared_expenses_owed,
+        'shared_expenses_to_receive': shared_expenses_to_receive,
     }
     return render(request, 'core/dashboard.html', context)
 
@@ -352,6 +388,43 @@ def analytics(request):
             'percentage': (actual_spending / budget.amount * 100) if budget.amount > 0 else 0
         })
 
+    # Shared Expenses Analytics
+    user_groups = ExpenseGroup.objects.filter(members=request.user)
+    
+    # Monthly shared expenses trend
+    shared_expenses_trend = SharedExpense.objects.filter(
+        group__in=user_groups,
+        date__year=current_year
+    ).values('date__month').annotate(
+        total=Sum('amount')
+    ).order_by('date__month')
+
+    # Group-wise spending
+    group_spending = SharedExpense.objects.filter(
+        group__in=user_groups,
+        date__year=current_year
+    ).values('group__name').annotate(
+        total=Sum('amount')
+    ).order_by('-total')
+
+    # Personal share statistics
+    personal_shares = ExpenseShare.objects.filter(
+        user=request.user,
+        expense__date__year=current_year
+    ).aggregate(
+        total_owed=Sum('amount', filter=Q(status='PENDING')),
+        total_paid=Sum('amount', filter=Q(status='PAID'))
+    )
+
+    # Payment statistics (as expense creator)
+    payment_stats = ExpenseShare.objects.filter(
+        expense__created_by=request.user,
+        expense__date__year=current_year
+    ).exclude(user=request.user).aggregate(
+        total_pending=Sum('amount', filter=Q(status='PENDING')),
+        total_received=Sum('amount', filter=Q(status='PAID'))
+    )
+
     context = {
         'yearly_data': yearly_data,
         'category_summary': category_summary,
@@ -361,6 +434,10 @@ def analytics(request):
         'overdue_bills': overdue_bills,
         'budget_vs_actual': budget_vs_actual,
         'current_year': current_year,
+        'shared_expenses_trend': shared_expenses_trend,
+        'group_spending': group_spending,
+        'personal_shares': personal_shares,
+        'payment_stats': payment_stats,
     }
     return render(request, 'core/analytics.html', context)
 
@@ -729,3 +806,430 @@ class VoiceTransactionViewSet(viewsets.ModelViewSet):
         except Exception as e:
             voice_transaction.transcription = f"Error processing voice: {str(e)}"
             voice_transaction.save()
+
+@login_required
+def expense_groups(request):
+    """View for listing user's expense groups."""
+    expense_groups = ExpenseGroup.objects.filter(
+        Q(members=request.user) | Q(created_by=request.user)
+    ).distinct()
+    
+    # Calculate additional stats for each group
+    for group in expense_groups:
+        group.member_count = group.members.count()
+        group.expense_count = SharedExpense.objects.filter(group=group).count()
+        
+        # Calculate user balance
+        user_shares = ExpenseShare.objects.filter(
+            expense__group=group,
+            user=request.user
+        ).aggregate(
+            total_owed=Sum('amount', filter=Q(status='PENDING')),
+            total_paid=Sum('amount', filter=Q(status='PAID'))
+        )
+        
+        group.user_balance = (user_shares['total_paid'] or 0) - (user_shares['total_owed'] or 0)
+    
+    # Calculate totals for summary cards
+    total_paid = ExpenseShare.objects.filter(
+        user=request.user,
+        status='PAID'
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    
+    total_pending = ExpenseShare.objects.filter(
+        user=request.user,
+        status='PENDING'
+    ).aggregate(total=Sum('amount'))['total'] or 0
+    
+    total_to_receive = ExpenseShare.objects.filter(
+        expense__created_by=request.user,
+        status='PENDING'
+    ).exclude(user=request.user).aggregate(total=Sum('amount'))['total'] or 0
+    
+    context = {
+        'expense_groups': expense_groups,
+        'total_paid': total_paid,
+        'total_pending': total_pending,
+        'total_to_receive': total_to_receive,
+        'pending_expenses': SharedExpense.objects.filter(
+            group__in=expense_groups,
+            shares__user=request.user,
+            shares__status='PENDING'
+        ).count()
+    }
+    return render(request, 'core/expense_groups.html', context)
+
+@login_required
+def create_expense_group(request):
+    """View for creating a new expense group."""
+    if request.method == 'POST':
+        form = ExpenseGroupForm(request.POST)
+        if form.is_valid():
+            group = form.save(commit=False)
+            group.created_by = request.user
+            group.save()
+            
+            # Add creator as admin
+            ExpenseGroupMember.objects.create(
+                group=group,
+                user=request.user,
+                role='ADMIN'
+            )
+            
+            # Add other members
+            for email in form.cleaned_data['members']:
+                try:
+                    user = User.objects.get(email=email)
+                    if user != request.user:
+                        ExpenseGroupMember.objects.create(
+                            group=group,
+                            user=user
+                        )
+                except User.DoesNotExist:
+                    messages.warning(request, f'User with email {email} not found')
+            
+            messages.success(request, 'Expense group created successfully!')
+            return redirect('expense-group-detail', pk=group.pk)
+    else:
+        form = ExpenseGroupForm()
+    
+    return render(request, 'core/expense_group_form.html', {'form': form})
+
+@login_required
+def expense_group_detail(request, pk):
+    """View for showing expense group details and expenses."""
+    group = get_object_or_404(ExpenseGroup, pk=pk)
+    if not group.members.filter(id=request.user.id).exists():
+        messages.error(request, 'You do not have access to this group')
+        return redirect('expense-groups')
+    
+    expenses = SharedExpense.objects.filter(group=group).order_by('-date')
+    member_shares = {}
+    
+    # Calculate total expenses in the group
+    total_expenses = expenses.aggregate(total=Sum('amount'))['total'] or 0
+    
+    # Calculate user's total share
+    user_shares = ExpenseShare.objects.filter(
+        expense__group=group,
+        user=request.user
+    ).aggregate(
+        total=Sum('amount'),
+        total_paid=Sum('amount', filter=Q(status='PAID')),
+        total_pending=Sum('amount', filter=Q(status='PENDING'))
+    )
+    
+    user_share = user_shares['total'] or 0
+    you_owe = user_shares['total_pending'] or 0
+    
+    # Calculate amount others owe to the user
+    youre_owed = ExpenseShare.objects.filter(
+        expense__group=group,
+        expense__created_by=request.user,
+        status='PENDING'
+    ).exclude(user=request.user).aggregate(total=Sum('amount'))['total'] or 0
+    
+    # Calculate member shares for display
+    for expense in expenses:
+        shares = expense.get_member_shares()
+        for user, amount in shares.items():
+            if user not in member_shares:
+                member_shares[user] = {'paid': 0, 'owed': 0}
+            
+            share = expense.shares.filter(user=user).first()
+            if share and share.status == 'PAID':
+                member_shares[user]['paid'] += amount
+            else:
+                member_shares[user]['owed'] += amount
+    
+    context = {
+        'group': group,
+        'expenses': expenses,
+        'member_shares': member_shares,
+        'is_admin': group.expensegroupmember_set.filter(user=request.user, role='ADMIN').exists(),
+        'total_expenses': total_expenses,
+        'user_share': user_share,
+        'you_owe': you_owe,
+        'youre_owed': youre_owed
+    }
+    return render(request, 'core/expense_group_detail.html', context)
+
+@login_required
+def create_shared_expense(request, group_pk):
+    """View for creating a new shared expense."""
+    group = get_object_or_404(ExpenseGroup, pk=group_pk)
+    if not group.members.filter(id=request.user.id).exists():
+        messages.error(request, 'You do not have access to this group')
+        return redirect('expense-groups')
+    
+    if request.method == 'POST':
+        title = request.POST.get('title')
+        amount = Decimal(request.POST.get('amount', '0'))
+        description = request.POST.get('description')
+        date = request.POST.get('date')
+        category_id = request.POST.get('category')
+        split_type = request.POST.get('split_type')
+        due_date = request.POST.get('due_date')
+        
+        # Create the expense
+        expense = SharedExpense.objects.create(
+            title=title,
+            amount=amount,
+            description=description,
+            date=date,
+            category_id=category_id,
+            created_by=request.user,
+            group=group,
+            split_type=split_type,
+            due_date=due_date if due_date else None
+        )
+        
+        # Handle different split types
+        if split_type == 'EQUAL':
+            # Equal split - divide amount among all members
+            member_count = group.members.count()
+            if member_count > 0:
+                share_amount = amount / member_count
+                for member in group.members.all():
+                    if member != request.user:  # Skip the creator
+                        ExpenseShare.objects.create(
+                            expense=expense,
+                            user=member,
+                            amount=share_amount
+                        )
+                    
+        elif split_type == 'PERCENTAGE':
+            # Get user-defined percentages from form
+            total_percentage = Decimal('0')
+            shares = {}
+            
+            # First, collect all percentages and validate total
+            for member in group.members.exclude(id=request.user.id):
+                percentage = Decimal(request.POST.get(f'percentage_{member.id}', '0'))
+                if percentage > 0:
+                    total_percentage += percentage
+                    shares[member] = percentage
+            
+            # Validate total percentage
+            if total_percentage > 100:
+                expense.delete()
+                messages.error(request, 'Total percentage cannot exceed 100%')
+                return redirect('create-shared-expense', group_pk=group_pk)
+            elif total_percentage == 0:
+                expense.delete()
+                messages.error(request, 'Please set percentage shares for members')
+                return redirect('create-shared-expense', group_pk=group_pk)
+            
+            # Create shares based on percentages
+            for member, percentage in shares.items():
+                share_amount = (amount * percentage / 100).quantize(Decimal('.01'))
+                ExpenseShare.objects.create(
+                    expense=expense,
+                    user=member,
+                    amount=share_amount
+                )
+                    
+        else:  # CUSTOM
+            # Custom split - get amounts from form
+            for member in group.members.exclude(id=request.user.id):
+                share_amount = request.POST.get(f'share_amount_{member.id}', None)
+                if share_amount:
+                    ExpenseShare.objects.create(
+                        expense=expense,
+                        user=member,
+                        amount=Decimal(share_amount)
+                    )
+        
+        messages.success(request, 'Shared expense created successfully!')
+        return redirect('expense-group-detail', pk=group_pk)
+    
+    # Get all members except the current user for the percentage split
+    members = group.members.exclude(id=request.user.id).select_related('user')
+    
+    categories = Category.objects.filter(
+        Q(user=request.user) | Q(user__in=group.members.all()),
+        type='expense'
+    ).distinct()
+    
+    context = {
+        'group': group,
+        'categories': categories,
+        'members': members,
+        'expense': None  # Add this to handle the template's expense checks
+    }
+    return render(request, 'core/shared_expense_form.html', context)
+
+@login_required
+def mark_share_as_paid(request, share_pk):
+    """View for marking an expense share as paid."""
+    share = get_object_or_404(ExpenseShare, pk=share_pk, user=request.user)
+    
+    if request.method == 'POST':
+        payment_proof = request.FILES.get('payment_proof')
+        notes = request.POST.get('notes')
+        
+        share.payment_proof = payment_proof
+        share.notes = notes
+        share.mark_as_paid()
+        
+        messages.success(request, 'Payment marked as completed!')
+        return redirect('expense-group-detail', pk=share.expense.group.pk)
+    
+    return render(request, 'core/mark_share_paid.html', {'share': share})
+
+@login_required
+def edit_expense_group(request, pk):
+    """View for editing an expense group."""
+    group = get_object_or_404(ExpenseGroup, pk=pk)
+    if not group.expensegroupmember_set.filter(user=request.user, role='ADMIN').exists():
+        messages.error(request, 'You do not have permission to edit this group')
+        return redirect('expense-group-detail', pk=pk)
+    
+    if request.method == 'POST':
+        name = request.POST.get('name')
+        description = request.POST.get('description')
+        
+        group.name = name
+        group.description = description
+        group.save()
+        
+        messages.success(request, 'Group updated successfully!')
+        return redirect('expense-group-detail', pk=pk)
+    
+    return render(request, 'core/expense_group_form.html', {'group': group})
+
+@login_required
+def delete_expense_group(request, pk):
+    """View for deleting an expense group."""
+    group = get_object_or_404(ExpenseGroup, pk=pk)
+    if not group.expensegroupmember_set.filter(user=request.user, role='ADMIN').exists():
+        messages.error(request, 'You do not have permission to delete this group')
+        return redirect('expense-group-detail', pk=pk)
+    
+    if request.method == 'POST':
+        group.delete()
+        messages.success(request, 'Group deleted successfully!')
+        return redirect('expense-groups')
+    
+    return render(request, 'core/expense_group_confirm_delete.html', {'group': group})
+
+@login_required
+def manage_group_members(request, pk):
+    """View for managing group members."""
+    group = get_object_or_404(ExpenseGroup, pk=pk)
+    if not group.expensegroupmember_set.filter(user=request.user, role='ADMIN').exists():
+        messages.error(request, 'You do not have permission to manage members')
+        return redirect('expense-group-detail', pk=pk)
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        member_id = request.POST.get('member_id')
+        
+        if action == 'remove':
+            member = get_object_or_404(ExpenseGroupMember, pk=member_id)
+            if member.user != request.user:  # Prevent self-removal
+                member.delete()
+                messages.success(request, 'Member removed successfully!')
+        elif action == 'make_admin':
+            member = get_object_or_404(ExpenseGroupMember, pk=member_id)
+            member.role = 'ADMIN'
+            member.save()
+            messages.success(request, 'Member promoted to admin!')
+    
+    members = group.expensegroupmember_set.select_related('user').all()
+    return render(request, 'core/expense_group_members.html', {'group': group, 'members': members})
+
+@login_required
+def invite_member(request, pk):
+    """View for inviting new members to the group."""
+    group = get_object_or_404(ExpenseGroup, pk=pk)
+    if not group.expensegroupmember_set.filter(user=request.user, role='ADMIN').exists():
+        messages.error(request, 'You do not have permission to invite members')
+        return redirect('expense-group-detail', pk=pk)
+    
+    if request.method == 'POST':
+        email = request.POST.get('email')
+        try:
+            user = User.objects.get(email=email)
+            if not group.members.filter(id=user.id).exists():
+                ExpenseGroupMember.objects.create(group=group, user=user)
+                messages.success(request, f'{user.get_full_name() or user.username} added to the group!')
+            else:
+                messages.warning(request, 'User is already a member of this group')
+        except User.DoesNotExist:
+            messages.error(request, f'No user found with email {email}')
+    
+    return redirect('manage-group-members', pk=pk)
+
+@login_required
+def shared_expense_detail(request, group_pk, pk):
+    """View for showing shared expense details."""
+    expense = get_object_or_404(SharedExpense, pk=pk, group_id=group_pk)
+    if not expense.group.members.filter(id=request.user.id).exists():
+        messages.error(request, 'You do not have access to this expense')
+        return redirect('expense-groups')
+    
+    return render(request, 'core/shared_expense_detail.html', {'expense': expense})
+
+@login_required
+def edit_shared_expense(request, group_pk, pk):
+    """View for editing a shared expense."""
+    expense = get_object_or_404(SharedExpense, pk=pk, group_id=group_pk)
+    if not expense.can_edit(request.user):
+        messages.error(request, 'You do not have permission to edit this expense')
+        return redirect('shared-expense-detail', group_pk=group_pk, pk=pk)
+    
+    if request.method == 'POST':
+        title = request.POST.get('title')
+        amount = request.POST.get('amount')
+        description = request.POST.get('description')
+        date = request.POST.get('date')
+        category_id = request.POST.get('category')
+        split_type = request.POST.get('split_type')
+        due_date = request.POST.get('due_date')
+        
+        expense.title = title
+        expense.amount = Decimal(amount)
+        expense.description = description
+        expense.date = date
+        expense.category_id = category_id
+        expense.split_type = split_type
+        expense.due_date = due_date if due_date else None
+        expense.save()
+        
+        # Update shares based on new split type and amount
+        shares = expense.get_member_shares()
+        for user, amount in shares.items():
+            ExpenseShare.objects.update_or_create(
+                expense=expense,
+                user=user,
+                defaults={'amount': amount}
+            )
+        
+        messages.success(request, 'Expense updated successfully!')
+        return redirect('shared-expense-detail', group_pk=group_pk, pk=pk)
+    
+    categories = Category.objects.filter(
+        Q(user=request.user) | Q(user__in=expense.group.members.all()),
+        type='expense'
+    ).distinct()
+    
+    return render(request, 'core/shared_expense_form.html', {
+        'expense': expense,
+        'categories': categories
+    })
+
+@login_required
+def delete_shared_expense(request, group_pk, pk):
+    """View for deleting a shared expense."""
+    expense = get_object_or_404(SharedExpense, pk=pk, group_id=group_pk)
+    if not expense.can_edit(request.user):
+        messages.error(request, 'You do not have permission to delete this expense')
+        return redirect('shared-expense-detail', group_pk=group_pk, pk=pk)
+    
+    if request.method == 'POST':
+        expense.delete()
+        messages.success(request, 'Expense deleted successfully!')
+        return redirect('expense-group-detail', pk=group_pk)
+    
+    return render(request, 'core/shared_expense_confirm_delete.html', {'expense': expense})

@@ -1,0 +1,139 @@
+{% extends 'core/base.html' %}
+{% load currency_format %}
+
+{% block title %}{{ expense.title }} - Shared Expenses{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Expense Details</h5>
+                {% if expense.can_edit %}
+                <div class="dropdown">
+                    <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-cog"></i> Manage
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                            <a class="dropdown-item" href="{% url 'edit-shared-expense' expense.group.id expense.id %}">
+                                <i class="fas fa-edit me-2"></i>Edit Expense
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="{% url 'delete-shared-expense' expense.group.id expense.id %}">
+                                <i class="fas fa-trash me-2"></i>Delete Expense
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <!-- Basic Info -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-3">Basic Information</h6>
+                        <ul class="list-unstyled">
+                            <li class="mb-2">
+                                <strong>Title:</strong> {{ expense.title }}
+                            </li>
+                            <li class="mb-2">
+                                <strong>Amount:</strong> {{ expense.amount|currency }}
+                            </li>
+                            <li class="mb-2">
+                                <strong>Date:</strong> {{ expense.date|date:"M d, Y" }}
+                            </li>
+                            <li class="mb-2">
+                                <strong>Category:</strong> 
+                                {% if expense.category %}
+                                {{ expense.category.name }}
+                                {% else %}
+                                <span class="text-muted">Uncategorized</span>
+                                {% endif %}
+                            </li>
+                            <li class="mb-2">
+                                <strong>Split Type:</strong> {{ expense.get_split_type_display }}
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-3">Additional Details</h6>
+                        <ul class="list-unstyled">
+                            <li class="mb-2">
+                                <strong>Created By:</strong> {{ expense.created_by.get_full_name|default:expense.created_by.username }}
+                            </li>
+                            <li class="mb-2">
+                                <strong>Status:</strong>
+                                <span class="badge {% if expense.status == 'SETTLED' %}bg-success{% elif expense.status == 'PARTIALLY_PAID' %}bg-warning{% else %}bg-danger{% endif %}">
+                                    {{ expense.get_status_display }}
+                                </span>
+                            </li>
+                            {% if expense.due_date %}
+                            <li class="mb-2">
+                                <strong>Due Date:</strong> {{ expense.due_date|date:"M d, Y" }}
+                            </li>
+                            {% endif %}
+                            {% if expense.description %}
+                            <li class="mb-2">
+                                <strong>Description:</strong><br>
+                                {{ expense.description|linebreaks }}
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Shares -->
+                <h6 class="text-muted mb-3">Expense Shares</h6>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Member</th>
+                                <th>Share Amount</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for share in expense.shares.all %}
+                            <tr>
+                                <td>{{ share.user.get_full_name|default:share.user.username }}</td>
+                                <td>{{ share.amount|currency }}</td>
+                                <td>
+                                    <span class="badge {% if share.status == 'PAID' %}bg-success{% else %}bg-warning{% endif %}">
+                                        {{ share.get_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if share.user == request.user and share.status == 'PENDING' %}
+                                    <a href="{% url 'mark-share-paid' share.id %}" class="btn btn-sm btn-success">
+                                        <i class="fas fa-check me-1"></i>Mark as Paid
+                                    </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Receipt -->
+                {% if expense.receipt %}
+                <div class="mt-4">
+                    <h6 class="text-muted mb-3">Receipt</h6>
+                    <img src="{{ expense.receipt.url }}" alt="Receipt" class="img-fluid rounded">
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <a href="{% url 'expense-group-detail' expense.group.id %}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Back to Group
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,5 +1,5 @@
 from django import forms
-from .models import Category, Transaction, Budget, RecurringTransaction, SavingsGoal, BillReminder
+from .models import Category, Transaction, Budget, RecurringTransaction, SavingsGoal, BillReminder, ExpenseGroup
 
 class CategoryForm(forms.ModelForm):
     class Meta:
@@ -112,3 +112,23 @@ class BillReminderForm(forms.ModelForm):
         if recurring and not recurring_frequency:
             raise forms.ValidationError('Recurring frequency is required for recurring bills.')
         return cleaned_data 
+
+class ExpenseGroupForm(forms.ModelForm):
+    members = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'placeholder': 'Enter email address'}),
+        help_text='Enter email addresses of people you want to invite'
+    )
+
+    class Meta:
+        model = ExpenseGroup
+        fields = ['name', 'description', 'default_split_type', 'auto_approve']
+        widgets = {
+            'description': forms.Textarea(attrs={'rows': 3}),
+        }
+
+    def clean_members(self):
+        members = self.cleaned_data.get('members', '')
+        if not members:
+            return []
+        return [email.strip() for email in members.split(',') if email.strip()] 
