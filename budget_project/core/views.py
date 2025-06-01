@@ -27,10 +27,11 @@ import io
 import json
 import firebase_admin
 from firebase_admin import credentials, messaging
+from django import forms
 
 @login_required
 def dashboard(request):
-    current_date = timezone.now()
+    current_date = timezone.now().date()
     current_month = current_date.month
     current_year = current_date.year
 
@@ -54,12 +55,51 @@ def dashboard(request):
         user=request.user,
         month=current_month,
         year=current_year
-    )
+    ).select_related('category')
+
+    # Calculate spent amounts for each budget
+    for budget in budgets:
+        spent = Transaction.objects.filter(
+            user=request.user,
+            category=budget.category,
+            type='expense',
+            date__year=current_year,
+            date__month=current_month
+        ).aggregate(total=Sum('amount'))['total'] or 0
+        
+        budget.spent_amount = spent
+        budget.spent_percentage = (spent / budget.amount * 100) if budget.amount > 0 else 0
+        budget.remaining = budget.amount - spent
 
     # Recent transactions
     recent_transactions = Transaction.objects.filter(
         user=request.user
-    ).order_by('-date')[:5]
+    ).select_related('category').order_by('-date')[:5]
+
+    # Active Savings Goals
+    savings_goals = SavingsGoal.objects.filter(
+        user=request.user,
+        status='in_progress'
+    ).select_related('category')[:3]  # Show top 3 active goals
+
+    # Upcoming Bills
+    upcoming_bills = BillReminder.objects.filter(
+        user=request.user,
+        status='pending',
+        due_date__gte=current_date
+    ).order_by('due_date')[:3]  # Show next 3 upcoming bills
+
+    overdue_bills = BillReminder.objects.filter(
+        user=request.user,
+        status='pending',
+        due_date__lt=current_date
+    ).count()
+
+    # Active Recurring Transactions
+    recurring_transactions = RecurringTransaction.objects.filter(
+        user=request.user,
+        is_active=True
+    ).select_related('category')[:3]  # Show top 3 active recurring transactions
 
     context = {
         'monthly_income': monthly_income,
@@ -67,6 +107,11 @@ def dashboard(request):
         'net_amount': monthly_income - monthly_expense,
         'budgets': budgets,
         'recent_transactions': recent_transactions,
+        'savings_goals': savings_goals,
+        'upcoming_bills': upcoming_bills,
+        'overdue_bills': overdue_bills,
+        'recurring_transactions': recurring_transactions,
+        'current_date': current_date,
     }
     return render(request, 'core/dashboard.html', context)
 
@@ -157,12 +202,32 @@ class BudgetListView(LoginRequiredMixin, ListView):
     context_object_name = 'budgets'
 
     def get_queryset(self):
-        current_date = timezone.now()
+        self.current_date = timezone.now().date()
         return Budget.objects.filter(
             user=self.request.user,
-            month=current_date.month,
-            year=current_date.year
-        )
+            month=self.current_date.month,
+            year=self.current_date.year
+        ).select_related('category')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['current_date'] = self.current_date
+        
+        # Calculate spent amounts for each budget
+        for budget in context['budgets']:
+            spent = Transaction.objects.filter(
+                user=self.request.user,
+                category=budget.category,
+                type='expense',
+                date__year=self.current_date.year,
+                date__month=self.current_date.month
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            
+            budget.spent_amount = spent
+            budget.spent_percentage = (spent / budget.amount * 100) if budget.amount > 0 else 0
+            budget.remaining = budget.amount - spent
+            
+        return context
 
 class BudgetCreateView(LoginRequiredMixin, CreateView):
     model = Budget
@@ -176,6 +241,12 @@ class BudgetCreateView(LoginRequiredMixin, CreateView):
             user=self.request.user,
             type='expense'
         )
+        current_year = timezone.now().year
+        form.fields['year'].initial = current_year
+        # Provide choices for 2 years before and 2 years after current year
+        form.fields['year'].widget = forms.Select(choices=[
+            (year, str(year)) for year in range(current_year - 2, current_year + 3)
+        ])
         return form
 
     def form_valid(self, form):
@@ -205,8 +276,11 @@ class BudgetDeleteView(LoginRequiredMixin, DeleteView):
 
 @login_required
 def analytics(request):
+    current_date = timezone.now().date()
+    current_year = current_date.year
+    current_month = current_date.month
+
     # Get yearly summary
-    current_year = timezone.now().year
     yearly_data = Transaction.objects.filter(
         user=request.user,
         date__year=current_year
@@ -222,9 +296,71 @@ def analytics(request):
         total=Sum('amount')
     ).order_by('-total')
 
+    # Calculate total for each category to get percentages
+    total_amount = sum(cat['total'] for cat in category_summary)
+    for category in category_summary:
+        category['percentage'] = (category['total'] / total_amount * 100) if total_amount > 0 else 0
+
+    # Recurring Transactions Summary
+    recurring_summary = RecurringTransaction.objects.filter(
+        user=request.user,
+        is_active=True
+    ).values('type').annotate(
+        total=Sum('amount')
+    )
+
+    # Savings Goals Progress
+    savings_goals = SavingsGoal.objects.filter(
+        user=request.user,
+        status='in_progress'
+    ).select_related('category')
+
+    # Bill Reminders Summary
+    upcoming_bills = BillReminder.objects.filter(
+        user=request.user,
+        status='pending',
+        due_date__gte=current_date
+    ).order_by('due_date')[:5]
+
+    overdue_bills = BillReminder.objects.filter(
+        user=request.user,
+        status='pending',
+        due_date__lt=current_date
+    ).count()
+
+    # Budget vs Actual Spending
+    budgets = Budget.objects.filter(
+        user=request.user,
+        year=current_year,
+        month=current_month
+    ).select_related('category')
+
+    budget_vs_actual = []
+    for budget in budgets:
+        actual_spending = Transaction.objects.filter(
+            user=request.user,
+            category=budget.category,
+            date__year=current_year,
+            date__month=current_month,
+            type='expense'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        budget_vs_actual.append({
+            'category': budget.category.name,
+            'budget_amount': budget.amount,
+            'actual_amount': actual_spending,
+            'percentage': (actual_spending / budget.amount * 100) if budget.amount > 0 else 0
+        })
+
     context = {
         'yearly_data': yearly_data,
         'category_summary': category_summary,
+        'recurring_summary': recurring_summary,
+        'savings_goals': savings_goals,
+        'upcoming_bills': upcoming_bills,
+        'overdue_bills': overdue_bills,
+        'budget_vs_actual': budget_vs_actual,
+        'current_year': current_year,
     }
     return render(request, 'core/analytics.html', context)
 

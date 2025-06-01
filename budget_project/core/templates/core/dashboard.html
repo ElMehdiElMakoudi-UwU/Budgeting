@@ -5,9 +5,10 @@
 {% block title %}Dashboard - Budget App{% endblock %}
 
 {% block content %}
+<!-- Summary Cards -->
 <div class="row mb-4">
     <div class="col-md-4">
-        <div class="card bg-success text-white">
+        <div class="card bg-success text-white h-100">
             <div class="card-body">
                 <h5 class="card-title">Monthly Income</h5>
                 <h2 class="card-text">{{ monthly_income|currency }}</h2>
@@ -15,7 +16,7 @@
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card bg-danger text-white">
+        <div class="card bg-danger text-white h-100">
             <div class="card-body">
                 <h5 class="card-title">Monthly Expenses</h5>
                 <h2 class="card-text">{{ monthly_expense|currency }}</h2>
@@ -23,7 +24,7 @@
         </div>
     </div>
     <div class="col-md-4">
-        <div class="card {% if net_amount >= 0 %}bg-info{% else %}bg-warning{% endif %} text-white">
+        <div class="card {% if net_amount >= 0 %}bg-info{% else %}bg-warning{% endif %} text-white h-100">
             <div class="card-body">
                 <h5 class="card-title">Net Amount</h5>
                 <h2 class="card-text">{{ net_amount|currency }}</h2>
@@ -32,35 +33,74 @@
     </div>
 </div>
 
+<!-- Main Content -->
 <div class="row">
+    <!-- Left Column -->
     <div class="col-md-6">
-        <div class="card">
+        <!-- Recent Transactions -->
+        <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Transactions</h5>
                 <a href="{% url 'transaction-create' %}" class="btn btn-primary btn-sm">Add Transaction</a>
             </div>
             <div class="card-body">
-                <div class="list-group">
+                <div class="list-group list-group-flush">
                     {% for transaction in recent_transactions %}
                     <div class="list-group-item">
                         <div class="d-flex w-100 justify-content-between">
                             <h6 class="mb-1">{{ transaction.category.name }}</h6>
-                            <small class="text-muted">{{ transaction.date }}</small>
+                            <span class="badge {% if transaction.type == 'income' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ transaction.amount|currency }}
+                            </span>
                         </div>
-                        <p class="mb-1">{{ transaction.amount|currency }}</p>
-                        {% if transaction.note %}
-                        <small class="text-muted">{{ transaction.note }}</small>
-                        {% endif %}
+                        <p class="mb-1">{{ transaction.note|default:'' }}</p>
+                        <small class="text-muted">{{ transaction.date }}</small>
                     </div>
                     {% empty %}
-                    <p class="text-muted">No recent transactions</p>
+                    <p class="text-muted text-center my-3">No recent transactions</p>
                     {% endfor %}
                 </div>
             </div>
         </div>
+
+        <!-- Savings Goals -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Active Savings Goals</h5>
+                <a href="{% url 'savings-goal-create' %}" class="btn btn-primary btn-sm">Add Goal</a>
+            </div>
+            <div class="card-body">
+                {% for goal in savings_goals %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <h6 class="mb-0">{{ goal.name }}</h6>
+                        <span class="text-muted">{{ goal.current_amount|currency }} / {{ goal.target_amount|currency }}</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-success" role="progressbar" 
+                             style="width: {{ goal.progress_percentage }}%"
+                             aria-valuenow="{{ goal.progress_percentage }}" 
+                             aria-valuemin="0" aria-valuemax="100">
+                        </div>
+                    </div>
+                    <small class="text-muted">Monthly Required: {{ goal.monthly_saving_required|currency }}</small>
+                </div>
+                {% empty %}
+                <p class="text-muted text-center my-3">No active savings goals</p>
+                {% endfor %}
+                {% if savings_goals %}
+                <div class="text-end mt-3">
+                    <a href="{% url 'savings-goal-list' %}" class="btn btn-link btn-sm">View All Goals</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
+
+    <!-- Right Column -->
     <div class="col-md-6">
-        <div class="card">
+        <!-- Budget Overview -->
+        <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Budget Overview</h5>
                 <a href="{% url 'budget-create' %}" class="btn btn-primary btn-sm">Add Budget</a>
@@ -68,22 +108,89 @@
             <div class="card-body">
                 {% for budget in budgets %}
                 <div class="mb-3">
-                    <div class="d-flex justify-content-between">
-                        <h6>{{ budget.category.name }}</h6>
-                        <span>{{ budget.amount|currency }}</span>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <h6 class="mb-0">{{ budget.category.name }}</h6>
+                        <span class="text-muted">
+                            {{ budget.spent_amount|currency }} / {{ budget.amount|currency }}
+                        </span>
                     </div>
-                    <div class="progress">
-                        {% with spent=budget.category.transaction_set.all|spent_percentage:budget.amount %}
-                        <div class="progress-bar {% if spent > 100 %}bg-danger{% elif spent > 80 %}bg-warning{% else %}bg-success{% endif %}"
-                             role="progressbar" style="width: {{ spent }}%">
-                            {{ spent }}%
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar {% if budget.spent_percentage > 100 %}bg-danger{% elif budget.spent_percentage > 80 %}bg-warning{% else %}bg-success{% endif %}"
+                             role="progressbar" style="width: {{ budget.spent_percentage }}%">
                         </div>
-                        {% endwith %}
                     </div>
+                    <small class="text-muted">{{ budget.spent_percentage|floatformat:1 }}% spent</small>
                 </div>
                 {% empty %}
-                <p class="text-muted">No budgets set for this month</p>
+                <p class="text-muted text-center my-3">No budgets set for this month</p>
                 {% endfor %}
+                {% if budgets %}
+                <div class="text-end mt-3">
+                    <a href="{% url 'budget-list' %}" class="btn btn-link btn-sm">View All Budgets</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Upcoming Bills -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Upcoming Bills</h5>
+                {% if overdue_bills > 0 %}
+                <span class="badge bg-danger">{{ overdue_bills }} Overdue</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% for bill in upcoming_bills %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ bill.title }}</h6>
+                            <span class="badge {% if bill.due_date < current_date %}bg-danger{% else %}bg-warning{% endif %}">
+                                {{ bill.amount|currency }}
+                            </span>
+                        </div>
+                        <p class="mb-1">{{ bill.category.name }}</p>
+                        <small class="text-muted">Due: {{ bill.due_date }}</small>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center my-3">No upcoming bills</p>
+                    {% endfor %}
+                </div>
+                <div class="text-end mt-3">
+                    <a href="{% url 'bill_reminders' %}" class="btn btn-link btn-sm">View All Bills</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recurring Transactions -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Active Recurring Transactions</h5>
+                <a href="{% url 'recurring-transaction-create' %}" class="btn btn-primary btn-sm">Add Recurring</a>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    {% for transaction in recurring_transactions %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ transaction.description }}</h6>
+                            <span class="badge {% if transaction.type == 'income' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ transaction.amount|currency }}
+                            </span>
+                        </div>
+                        <p class="mb-1">{{ transaction.category.name }}</p>
+                        <small class="text-muted">{{ transaction.get_frequency_display }}</small>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted text-center my-3">No active recurring transactions</p>
+                    {% endfor %}
+                </div>
+                {% if recurring_transactions %}
+                <div class="text-end mt-3">
+                    <a href="{% url 'recurring-transaction-list' %}" class="btn btn-link btn-sm">View All Recurring</a>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

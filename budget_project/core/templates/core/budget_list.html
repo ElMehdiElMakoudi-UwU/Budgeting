@@ -27,17 +27,15 @@
                         </div>
                     </div>
                     
-                    {% with spent=budget.category.transaction_set.all|spent_percentage:budget.amount %}
                     <div class="d-flex justify-content-between mb-1">
                         <span>Budget: {{ budget.amount|currency }}</span>
-                        <span>Spent: {{ spent_amount|currency }} ({{ spent }}%)</span>
+                        <span>Spent: {{ budget.spent_amount|currency }} ({{ budget.spent_percentage|floatformat:1 }}%)</span>
                     </div>
                     <div class="progress">
-                        <div class="progress-bar {% if spent > 100 %}bg-danger{% elif spent > 80 %}bg-warning{% else %}bg-success{% endif %}"
-                             role="progressbar" style="width: {{ spent }}%">
+                        <div class="progress-bar {% if budget.spent_percentage > 100 %}bg-danger{% elif budget.spent_percentage > 80 %}bg-warning{% else %}bg-success{% endif %}"
+                             role="progressbar" style="width: {{ budget.spent_percentage }}%">
                         </div>
                     </div>
-                    {% endwith %}
                 </div>
             </div>
             {% endfor %}
@@ -79,14 +77,12 @@
                         </thead>
                         <tbody>
                             {% for budget in budgets %}
-                            {% with spent=budget.category.transaction_set.all|sum_amount %}
                             <tr>
                                 <td>{{ budget.category.name }}</td>
                                 <td>{{ budget.amount|currency }}</td>
-                                <td>{{ spent|currency }}</td>
-                                <td>{{ budget.amount|subtract:spent|currency }}</td>
+                                <td>{{ budget.spent_amount|currency }}</td>
+                                <td>{{ budget.remaining|currency }}</td>
                             </tr>
-                            {% endwith %}
                             {% endfor %}
                         </tbody>
                     </table>
@@ -95,34 +91,47 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const ctx = document.getElementById('budgetChart').getContext('2d');
     new Chart(ctx, {
-        type: 'doughnut',
+        type: 'bar',
         data: {
             labels: [{% for budget in budgets %}'{{ budget.category.name }}',{% endfor %}],
-            datasets: [{
-                data: [{% for budget in budgets %}{{ budget.amount }},{% endfor %}],
-                backgroundColor: [
-                    '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
-                    '#858796', '#5a5c69', '#2e59d9', '#17a673', '#2c9faf'
-                ]
-            }]
+            datasets: [
+                {
+                    label: 'Budget',
+                    data: [{% for budget in budgets %}{{ budget.amount }},{% endfor %}],
+                    backgroundColor: 'rgba(78, 115, 223, 0.5)',
+                    borderColor: 'rgba(78, 115, 223, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Spent',
+                    data: [{% for budget in budgets %}{{ budget.spent_amount }},{% endfor %}],
+                    backgroundColor: 'rgba(28, 200, 138, 0.5)',
+                    borderColor: 'rgba(28, 200, 138, 1)',
+                    borderWidth: 1
+                }
+            ]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'bottom'
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
                 }
             }
         }
     });
 });
 </script>
+{% endblock %}
 {% endblock %} 
